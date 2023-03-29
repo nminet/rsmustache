@@ -46,9 +46,7 @@ impl ReaderStringOps for str {
     }
 
     fn is_standalone(&self, open_delimiter: &str, close_delimiter: &str) -> bool {
-        return if !self.is_standalone_open(open_delimiter) {
-            false
-        } else {
+        self.is_standalone_open(open_delimiter) && {
             let odl = open_delimiter.len() + 1;
             let cdl = close_delimiter.len();
             let mut after: usize = odl;
@@ -56,27 +54,24 @@ impl ReaderStringOps for str {
             while let Some(idx) = tail.find(close_delimiter) {
                 after += idx + cdl;
                 tail = &tail[idx + cdl..];
-                if !tail.is_empty() {
-                    if !tail.is_standalone_open(open_delimiter) {
-                        return false
-                    }
-                    after += odl;
-                    tail = &tail[odl..];
+                if tail.is_empty() || !tail.is_standalone_open(open_delimiter) {
+                    break
                 }
+                after += odl;
+                tail = &tail[odl..];
             }
             after == self.len()
         }
     }
 
     fn is_standalone_open(&self, open_delimiter: &str) -> bool {
+        static STRIPPABLE_SIGILS: &str = "#^/>=!$<";
         self.starts_with(open_delimiter)
             && open_delimiter.len() < self.len()
-            && STRIPPABLE_SIGIL.contains(&self[open_delimiter.len()..open_delimiter.len() + 1])
+            && STRIPPABLE_SIGILS.contains(&self[open_delimiter.len()..open_delimiter.len() + 1])
     }
 }
 
-
-static STRIPPABLE_SIGIL: &'static str = "#^/>=!$<";
 
 
 #[cfg(test)]
@@ -84,24 +79,31 @@ mod tests {
     use super::*;
     
     #[test]
-    fn standalone_single() {
-        let s = String::from("   {{#a}}{{/a}}  ");
-        let p = s[..].trim_standalone("{{", "}}");
-        assert_eq!(p, s.trim())
+    fn standalone_single_is_trimed() {
+        let s = String::from("   {{/a}}  ");
+        let r = s.trim_standalone("{{", "}}");
+        assert_eq!(r, s.trim())
     }
  
     #[test]
-    fn standalone_multi() {
+    fn standalone_multi_is_trimed() {
         let s = String::from("   {{#a}}{{^x}}{{/x}}{{/a}}  ");
-        let p = s[..].trim_standalone("{{", "}}");
-        assert_eq!(p, s.trim())
+        let r = s.trim_standalone("{{", "}}");
+        assert_eq!(r, s.trim())
     }
  
     #[test]
-    fn not_standalone_multi() {
+    fn not_standalone_single_is_not_trimed() {
+        let s = String::from("   {{x}}");
+        let r = s.trim_standalone("{{", "}}");
+        assert_eq!(r, s)
+    }
+ 
+    #[test]
+    fn not_standalone_multi_is_not_trimed() {
         let s = String::from("   {{#a}}{{^b}}{{x}}{{/b}}{{/a}}  ");
-        let p = s[..].trim_standalone("{{", "}}");
-        assert_eq!(p, s)
+        let r = s.trim_standalone("{{", "}}");
+        assert_eq!(r, s)
     }
  
      #[test]
