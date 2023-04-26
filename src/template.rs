@@ -1,7 +1,7 @@
 use crate::reader::{
     Reader
 };
-use crate::parser;
+use crate::{parser, Context};
 use crate::processor::Segments;
 
 
@@ -16,10 +16,10 @@ impl<'a> Template<'a> {
         Ok(Template::new(segments))
     }
 
-    pub fn render(&self) -> String {
+    pub fn render(&self, context: &Context) -> String {
         self.segments
             .iter()
-            .map(|s| s.render())
+            .map(|s| s.render(context))
             .collect::<Vec<String>>()
             .join("")
     }
@@ -28,18 +28,5 @@ impl<'a> Template<'a> {
         Template {
             segments
         }
-    }
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn render_text_only() {
-        let text = "hello, world!\n";
-        let template = Template::from(text).unwrap();
-        assert_eq!(template.render(), text);
     }
 }

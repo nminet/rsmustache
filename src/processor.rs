@@ -1,8 +1,9 @@
 use std::fmt::Debug;
+use crate::context::{Context};
 
 
 pub(crate) trait Segment<'a>: Debug {
-    fn render(&self) -> String;
+    fn render(&self, context: &Context) -> String;
     fn substitute(&self) {}
 }
 
@@ -23,7 +24,7 @@ impl<'a> TextSegment<'a> {
 }
 
 impl<'a> Segment<'a> for TextSegment<'a> {
-    fn render(&self) -> String {
+    fn render(&self, _context: &Context) -> String {
         self.text.to_string()
     }
 }
@@ -45,7 +46,7 @@ impl<'a> ValueSegment<'a> {
 }
 
 impl<'a> Segment<'a> for ValueSegment<'a> {
-    fn render(&self) -> String {
+    fn render(&self, context: &Context) -> String {
         self.name.to_string()
     }
 }
@@ -67,7 +68,7 @@ impl<'a> SectionSegment<'a> {
 }
 
 impl<'a> Segment<'a> for SectionSegment<'a> {
-    fn render(&self) -> String {
+    fn render(&self, context: &Context) -> String {
         self.name.to_string()
     }
 }
@@ -89,7 +90,7 @@ impl<'a> InvertedSectionSegment<'a> {
 }
 
 impl<'a> Segment<'a> for InvertedSectionSegment<'a> {
-    fn render(&self) -> String {
+    fn render(&self, context: &Context) -> String {
         self.name.to_string()
     }
 }
@@ -113,7 +114,7 @@ impl<'a> PartialSegment<'a> {
 }
 
 impl<'a> Segment<'a> for PartialSegment<'a> {
-    fn render(&self) -> String {
+    fn render(&self, context: &Context) -> String {
         self.name.to_string()
     }
 }
@@ -135,7 +136,7 @@ impl<'a> BlockSegment<'a> {
 }
 
 impl<'a> Segment<'a> for BlockSegment<'a> {
-    fn render(&self) -> String {
+    fn render(&self, context: &Context) -> String {
         self.name.to_string()
     }
 }
