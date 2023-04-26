@@ -37,8 +37,7 @@ fn delimiters_test() -> Result<(), ()> {
 
 
 fn run_spec_file(path: &str) -> Result<(), ()> {
-     yaml_spec(path)
-        .unwrap()
+    yaml_spec(path)?
         .tests
         .iter()
         .fold(
@@ -63,17 +62,18 @@ struct YamlSpecFile {
 #[derive(Deserialize, Debug)]
 struct YamlTestSpec {
     name: String,
+    desc: String,
     data: YamlValue,
     template: String,
     expected: String,
 }
 
-fn yaml_spec(path: &str) -> Result<YamlSpecFile, String> {
+fn yaml_spec(path: &str) -> Result<YamlSpecFile, ()> {
     let text = fs::read_to_string(path).map_err(
-        |err| format!("io: {}", err.to_string())
+        |err| println!("io: {}", err.to_string())
     )?;
     serde_yaml::from_str::<YamlSpecFile>(&text).map_err(
-        |err| format!("yaml: {}", err.to_string())
+        |err| println!("yaml: {}", err.to_string())
     )
 }
 

@@ -1,4 +1,4 @@
-use std::{ops::Add};
+use std::{ops::Add, cmp};
 
 #[derive(Clone)]
 pub(crate) struct Reader<'a> {
@@ -12,12 +12,21 @@ pub(crate) struct Reader<'a> {
 
 impl<'a> Reader<'a> {
     pub(crate) fn new(input: &'a str) -> Self {
+        let open_delimiter = "{{";
+        let close_delimiter = "}}";
+        let eol = input.next_eol_in_text(open_delimiter, close_delimiter).unwrap_or(input.len());
+        let is_standalone = input[..eol].trim().is_standalone(open_delimiter, close_delimiter);
+        let (pos, after_standalone) = if is_standalone {
+            (input.find(open_delimiter).unwrap(), cmp::min(eol + 1, input.len()))
+        } else {
+            (0, 0)
+        };
         Reader { 
             input,
-            open_delimiter: "{{",
-            close_delimiter: "}}",
-            pos: 0,
-            after_standalone: 0,
+            open_delimiter,
+            close_delimiter,
+            pos,
+            after_standalone,
             before_close: 0
         }
     }
@@ -167,6 +176,7 @@ trait ReaderStringOps {
     fn span_tag(&self, open_delimiter: &str, close_delimiter: &str) -> Option<(&str, usize)>;
     fn is_standalone(&self, open_delimiter: &str, close_delimiter: &str) -> bool;
     fn is_standalone_open(&self, open_delimiter: &str) -> bool;
+    fn next_eol_in_text(&self, open_delimiter: &str, close_delimiter: &str) -> Option<usize>;
     fn trim_sigil(&self) -> &str;
 }
 
@@ -177,7 +187,7 @@ impl ReaderStringOps for str {
         let mut after_standalone = 0;
         if let Some(eol_in_text) = self[..after_text].rfind("\n") {
             if self[eol_in_text + 1..after_text].chars().all(|c: char| c.is_ascii_whitespace()) {
-                let after_next_eol = if let Some(p) = self[eol_in_text + 1..].find("\n") {
+                let after_next_eol = if let Some(p) = self[eol_in_text + 1..].next_eol_in_text(open_delimiter, close_delimiter) {
                     eol_in_text + 1 + p + 1
                 } else {
                     self.len()
@@ -240,6 +250,28 @@ impl ReaderStringOps for str {
         self.starts_with(open_delimiter)
             && open_delimiter.len() < self.len()
             && STRIPPABLE_SIGILS.contains(&self[open_delimiter.len()..].trim()[0..1])
+    }
+
+    fn next_eol_in_text(&self, open_delimiter: &str, close_delimiter: &str) -> Option<usize> {
+        let odl = open_delimiter.len();
+        let cdl = close_delimiter.len();
+        let mut pos: usize = 0;
+        let mut eol: usize;
+        match self.find('\n') {
+            Some(p) => eol = p,
+            None => return None
+        };
+        while let Some(od) = self[pos..eol].find(open_delimiter) {
+            match self[od + odl..].find(close_delimiter) {
+                Some(cd) => pos = od + odl + cd + cdl,
+                None => return None
+            };
+            match self[pos..].find('\n') {
+                Some(p) => eol = pos + p,
+                None => return None
+            };
+        }
+        Some(eol)
     }
 
     fn trim_sigil(&self) -> &str {
