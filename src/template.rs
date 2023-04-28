@@ -1,3 +1,4 @@
+use crate::context::Stack;
 use crate::reader::{
     Reader
 };
@@ -16,10 +17,11 @@ impl<'a> Template<'a> {
         Ok(Template::new(segments))
     }
 
-    pub fn render(&self, context: &Context) -> String {
+    pub fn render<'b>(&self, context: Context<'b>) -> String {
+        let stack = Stack::from(context);
         self.segments
             .iter()
-            .map(|s| s.render(context))
+            .map(|s| s.render(&stack))
             .collect::<Vec<String>>()
             .join("")
     }

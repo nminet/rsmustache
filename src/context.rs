@@ -27,10 +27,32 @@ pub(crate) struct Stack<'a> {
 }
 
 
-impl Stack<'_> {
-    pub(crate) fn new() -> Self {
+impl<'a> Stack<'a> {
+    pub(crate) fn from(root: Context<'a>) -> Self {
         Stack {
-            frames: vec! []
+            frames: vec! [
+                root
+            ]
+        }
+    }
+
+    pub(crate) fn resolve(&self, name: &str) -> String {
+        match self.frames.last() {
+            Some(Context::Object(getter)) => {
+                if let Some(Context::Value(value)) = getter(name) {
+                    value
+                } else {
+                    String::new()
+                }
+            },
+            Some(Context::Value(value)) => {
+                if name == "." {
+                    value.clone()
+                } else {
+                    String::new()
+                }
+            },
+            _ => String::new()
         }
     }
 }

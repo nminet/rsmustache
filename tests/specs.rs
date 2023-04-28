@@ -81,7 +81,7 @@ fn yaml_spec(path: &str) -> Result<YamlSpecFile, ()> {
 fn run_spec_test(test: &YamlTestSpec) -> Result<(), String> {
     let template = Template::from(&test.template).unwrap();
     let context = test.data.into_context();
-    let result = template.render(&context);
+    let result = template.render(context);
     if result != test.expected {
         println!("{}: fail", test.name);
         println!("expected:\n{}", test.expected);

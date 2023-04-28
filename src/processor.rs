@@ -1,9 +1,9 @@
 use std::fmt::Debug;
-use crate::context::{Context};
+use crate::context::{Stack};
 
 
 pub(crate) trait Segment<'a>: Debug {
-    fn render(&self, context: &Context) -> String;
+    fn render<'b>(&self, stack: &Stack<'b>) -> String;
     fn substitute(&self) {}
 }
 
@@ -24,7 +24,7 @@ impl<'a> TextSegment<'a> {
 }
 
 impl<'a> Segment<'a> for TextSegment<'a> {
-    fn render(&self, _context: &Context) -> String {
+    fn render<'b>(&self, _stack: &Stack<'b>) -> String {
         self.text.to_string()
     }
 }
@@ -46,8 +46,12 @@ impl<'a> ValueSegment<'a> {
 }
 
 impl<'a> Segment<'a> for ValueSegment<'a> {
-    fn render(&self, context: &Context) -> String {
-        self.name.to_string()
+    fn render<'b>(&self, stack: &Stack<'b>) -> String {
+        let text = stack.resolve(self.name);
+        match self.is_escaped {
+            true => html_escape(text.to_string()),
+            false => text.to_string()
+        }
     }
 }
 
@@ -68,7 +72,7 @@ impl<'a> SectionSegment<'a> {
 }
 
 impl<'a> Segment<'a> for SectionSegment<'a> {
-    fn render(&self, context: &Context) -> String {
+    fn render<'b>(&self, _stack: &Stack<'b>) -> String {
         self.name.to_string()
     }
 }
@@ -90,7 +94,7 @@ impl<'a> InvertedSectionSegment<'a> {
 }
 
 impl<'a> Segment<'a> for InvertedSectionSegment<'a> {
-    fn render(&self, context: &Context) -> String {
+    fn render<'b>(&self, _stack: &Stack<'b>) -> String {
         self.name.to_string()
     }
 }
@@ -114,7 +118,7 @@ impl<'a> PartialSegment<'a> {
 }
 
 impl<'a> Segment<'a> for PartialSegment<'a> {
-    fn render(&self, context: &Context) -> String {
+    fn render<'b>(&self, _stack: &Stack<'b>) -> String {
         self.name.to_string()
     }
 }
@@ -136,7 +140,19 @@ impl<'a> BlockSegment<'a> {
 }
 
 impl<'a> Segment<'a> for BlockSegment<'a> {
-    fn render(&self, context: &Context) -> String {
+    fn render<'b>(&self, _stack: &Stack<'b>) -> String {
         self.name.to_string()
     }
+}
+
+
+fn html_escape(input: String) -> String {
+    input.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&#39;")
+        .replace("/", "&#47;")
+        .replace("=", "&#61;")
+        .replace("`", "&#96;")
 }
