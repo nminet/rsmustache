@@ -1,13 +1,13 @@
 use std::fmt::Debug;
-use crate::context::{Stack};
+use crate::context::Stack;
 
 
-pub(crate) trait Segment<'a>: Debug {
-    fn render<'b>(&self, stack: &Stack<'b>) -> String;
+pub(crate) trait Segment: Debug {
+    fn render(&self, stack: &Stack) -> String;
     fn substitute(&self) {}
 }
 
-pub(crate) type Segments<'a> = Vec<Box<dyn Segment<'a> + 'a>>;
+pub(crate) type Segments<'a> = Vec<Box<dyn Segment + 'a>>;
 
 
 #[derive(Debug)]
@@ -23,8 +23,8 @@ impl<'a> TextSegment<'a> {
     }
 }
 
-impl<'a> Segment<'a> for TextSegment<'a> {
-    fn render<'b>(&self, _stack: &Stack<'b>) -> String {
+impl<'a> Segment for TextSegment<'a> {
+    fn render<'s>(&self, _stack: &Stack) -> String {
         self.text.to_string()
     }
 }
@@ -45,9 +45,9 @@ impl<'a> ValueSegment<'a> {
     }
 }
 
-impl<'a> Segment<'a> for ValueSegment<'a> {
-    fn render<'b>(&self, stack: &Stack<'b>) -> String {
-        let text = stack.resolve(self.name);
+impl<'a> Segment for ValueSegment<'a> {
+    fn render(&self, stack: &Stack) -> String {
+        let text = stack.get(self.name).unwrap_or_default();
         match self.is_escaped {
             true => html_escape(text.to_string()),
             false => text.to_string()
@@ -69,11 +69,20 @@ impl<'a> SectionSegment<'a> {
             children
         }
     }
+
+    fn render_single(&self, stack: &Stack) -> String {
+        println!("render {:?} with {:?}", self, stack);
+        self.children
+            .iter()
+            .map(|child| child.render(stack))
+            .collect::<Vec<String>>()
+            .concat()
+    }
 }
 
-impl<'a> Segment<'a> for SectionSegment<'a> {
-    fn render<'b>(&self, _stack: &Stack<'b>) -> String {
-        self.name.to_string()
+impl<'a> Segment for SectionSegment<'a> {
+    fn render(&self, stack: &Stack) -> String {
+        String::new()
     }
 }
 
@@ -93,8 +102,8 @@ impl<'a> InvertedSectionSegment<'a> {
     }
 }
 
-impl<'a> Segment<'a> for InvertedSectionSegment<'a> {
-    fn render<'b>(&self, _stack: &Stack<'b>) -> String {
+impl<'a> Segment for InvertedSectionSegment<'a> {
+    fn render(&self, _stack: &Stack)-> String {
         self.name.to_string()
     }
 }
@@ -117,8 +126,8 @@ impl<'a> PartialSegment<'a> {
     }
 }
 
-impl<'a> Segment<'a> for PartialSegment<'a> {
-    fn render<'b>(&self, _stack: &Stack<'b>) -> String {
+impl<'a> Segment for PartialSegment<'a> {
+    fn render(&self, _stack: &Stack) -> String {
         self.name.to_string()
     }
 }
@@ -139,8 +148,8 @@ impl<'a> BlockSegment<'a> {
     }
 }
 
-impl<'a> Segment<'a> for BlockSegment<'a> {
-    fn render<'b>(&self, _stack: &Stack<'b>) -> String {
+impl<'a> Segment for BlockSegment<'a> {
+    fn render(&self, _stack: &Stack) -> String {
         self.name.to_string()
     }
 }

@@ -1,8 +1,8 @@
 use crate::context::{Context, Boxed, into_box};
-pub use serde_yaml::Value as YamlValue;
+pub use serde_json::Value as JsonValue;
 
 
-impl<'a> Context<'a> for &'a YamlValue {
+impl<'a> Context<'a> for &'a JsonValue {
     fn child(&self, name: &str) -> Option<Boxed<'a>> {
         self.get(name)
             .map(into_box)
@@ -10,7 +10,7 @@ impl<'a> Context<'a> for &'a YamlValue {
     
     fn children(&self) -> Vec<Boxed<'a>> {
         match self {
-            YamlValue::Sequence(seq) =>
+            JsonValue::Array(seq) =>
                 seq.iter()
                     .map(into_box)
                     .collect::<_>(),
@@ -20,10 +20,10 @@ impl<'a> Context<'a> for &'a YamlValue {
 
     fn value(&self) -> Option<String> {
         match self {
-            YamlValue::String(s) => Some(s.clone()),
-            YamlValue::Number(n) => Some(n.to_string()),
-            YamlValue::Bool(b) => Some(b.to_string()),
-            YamlValue::Null => Some(String::new()),
+            JsonValue::String(s) => Some(s.clone()),
+            JsonValue::Number(n) => Some(n.to_string()),
+            JsonValue::Bool(b) => Some(b.to_string()),
+            JsonValue::Null => Some(String::new()),
             _ => None
         }
     }

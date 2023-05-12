@@ -1,0 +1,8 @@
+overview:
+tests:
+  - name: Parent contexts
+    desc: Names missing in the current context are looked up in the stack.
+    data: { a: "foo", b: "wrong", sec: { b: "bar" }, c : { d : "baz" } }
+    template: '"{{#sec}}{{a}}, {{b}}, {{c.d}}{{/sec}}"'
+    expected: '"foo, bar, baz"'
+    

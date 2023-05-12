@@ -1,38 +1,42 @@
 extern crate mustache;
-use mustache::{Template, YamlValue, IntoContext};
+use mustache::{Template, YamlValue};
 
 use std::fs;
 use serde::{Deserialize};
 
+#[test]
+fn xxx_test() -> Result<(), ()> {
+    run_spec_file("xxx.yml")
+}
 
 #[test]
 fn comments_test() -> Result<(), ()> {
-    run_spec_file("tests/specs/comments.yml")
+    run_spec_file("comments.yml")
 }
 
 #[test]
 fn interpolation_test() -> Result<(), ()> {
-    run_spec_file("tests/specs/interpolation.yml")
+    run_spec_file("interpolation.yml")
 }
 
 #[test]
 fn sections_test() -> Result<(), ()> {
-    run_spec_file("tests/specs/sections.yml")
+    run_spec_file("sections.yml")
 }
 
 #[test]
 fn inverted_test() -> Result<(), ()> {
-    run_spec_file("tests/specs/inverted.yml")
+    run_spec_file("inverted.yml")
 }
 
 #[test]
 fn partials_test() -> Result<(), ()> {
-    run_spec_file("tests/specs/partials.yml")
+    run_spec_file("partials.yml")
 }
 
 #[test]
 fn delimiters_test() -> Result<(), ()> {
-    run_spec_file("tests/specs/delimiters.yml")
+    run_spec_file("delimiters.yml")
 }
 
 
@@ -68,7 +72,8 @@ struct YamlTestSpec {
     expected: String,
 }
 
-fn yaml_spec(path: &str) -> Result<YamlSpecFile, ()> {
+fn yaml_spec(name: &str) -> Result<YamlSpecFile, ()> {
+    let path = format!("tests/specs/{}", name);
     let text = fs::read_to_string(path).map_err(
         |err| println!("io: {}", err.to_string())
     )?;
@@ -80,8 +85,7 @@ fn yaml_spec(path: &str) -> Result<YamlSpecFile, ()> {
 
 fn run_spec_test(test: &YamlTestSpec) -> Result<(), String> {
     let template = Template::from(&test.template).unwrap();
-    let context = test.data.into_context();
-    let result = template.render(context);
+    let result = template.render(&test.data);
     if result != test.expected {
         println!("{}: fail", test.name);
         println!("expected:\n{}", test.expected);

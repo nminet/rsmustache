@@ -77,11 +77,11 @@ pub(crate) fn process<'a, 's: 'a>(
 
 
 trait SegmentsOps<'a> {
-    fn add_item(&mut self, item: impl Segment<'a> + 'a);
+    fn add_item(&mut self, item: impl Segment + 'a);
 }
 
 impl<'a> SegmentsOps<'a> for Segments<'a> {
-    fn add_item(&mut self, item: impl Segment<'a> + 'a) {
+    fn add_item(&mut self, item: impl Segment + 'a) {
         self.push(Box::new(item))
     }
 }
