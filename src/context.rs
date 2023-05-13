@@ -6,20 +6,21 @@ pub trait Context<'a>: Debug {
     fn child(&self, name: &str) -> Option<Boxed<'a>>;
     fn children(&self) -> Vec<Boxed<'a>>;
     fn value(&self) -> Option<String>;
+    fn is_truthy(&self) -> bool;
 }
 
-pub type Boxed<'a> = Box<dyn Context<'a> + 'a>;
+pub type Boxed<'a> = Rc<dyn Context<'a> + 'a>;
 
 pub(crate) fn into_box<'a, T>(context: &'a T) -> Boxed<'a>
 where &'a T: Context<'a> {
-    Box::new(context)
+    Rc::new(context)
 }
 
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Stack<'a> {
     context: Rc<Boxed<'a>>,
-    parent: Option<Rc<Boxed<'a>>>
+    parent: Option<Rc<Stack<'a>>>
 }
 
 pub(crate) enum PushResult<'a> {
@@ -41,36 +42,67 @@ impl<'a> Stack<'a> {
     fn frame(&self, context: Boxed<'a>) -> Self {
         Stack {
             context: Rc::new(context),
-            parent: Some(Rc::clone(&self.context))
+            parent: Some(Rc::new(self.clone()))
         }
     }
 
-    pub(crate) fn push(&self, name: &str) -> PushResult<'a> {
-        match self.context.child(name) {
-            Some(context) => {
-                let children = context.children();
-                if children.is_empty() {
-                    PushResult::Single(self.frame(context))
-                } else {
-                    PushResult::List(
-                        children.into_iter()
-                            .map(|context| self.frame(context))
-                            .collect::<Vec<Self>>()
-                    )
-                }
-            },
+    fn push_from_parent(&self, name: &str, up_ok: bool) -> PushResult<'a> {
+        match &self.parent {
+            Some(parent) if up_ok => Rc::clone(&parent).push(name, up_ok),
             _ => PushResult::None
+        }
+    }
+
+    fn push_obj_or_list(&self, context: Boxed<'a>) -> PushResult<'a> {
+        let children = context.children();
+        if children.is_empty() {
+            PushResult::Single(self.frame(context))
+        } else {
+            PushResult::List(
+                children.into_iter()
+                    .map(|context| self.frame(context))
+                    .collect::<_>()
+            )
+        }
+    }
+
+    pub(crate) fn push(&self, name: &str, up_ok: bool) -> PushResult<'a> {
+        if name == "." {
+            let children = self.context.children();
+            if children.is_empty() {
+                PushResult::Single(self.clone())
+            } else {
+                PushResult::List(
+                    children.into_iter()
+                        .map(|context| self.frame(context))
+                        .collect()
+                )
+            }
+        } else if let Some(idx) = name.find(".") {
+            match self.context.child(&name[..idx]) {
+                Some(context) => self.frame(context).push(&name[idx + 1..], false),
+                _ => self.push_from_parent(name, up_ok)
+            }
+        } else {
+            match self.context.child(name) {
+                Some(context) => self.push_obj_or_list(context),
+                _ => self.push_from_parent(name, up_ok)
+            }
         }
     }
 
     pub(crate) fn get(&self, name: &str) -> Option<String> {
         if name == "." {
             self.value()
-        } else if let PushResult::Single(item) = self.push(name) {
+        } else if let PushResult::Single(item) = self.push(name, true) {
             item.value()
         } else {
             None
         }
+    }
+
+    pub(crate) fn is_truthy(&self) -> bool {
+        self.context.is_truthy()
     }
 
     pub(crate) fn value(&self) -> Option<String> {
@@ -101,7 +133,7 @@ mod tests {
             root.get("phones"),
             None
         );
-        let phones = root.push("phones");
+        let phones = root.push("phones", true);
         match phones {
             PushResult::List(seq) =>
                 assert_eq!(

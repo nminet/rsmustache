@@ -87,7 +87,8 @@ fn run_spec_test(test: &YamlTestSpec) -> Result<(), String> {
     let template = Template::from(&test.template).unwrap();
     let result = template.render(&test.data);
     if result != test.expected {
-        println!("{}: fail", test.name);
+        println!("
+        {}: fail", test.name);
         println!("expected:\n{}", test.expected);
         println!("received:\n{}\n", result);
         Err(test.name.clone())

@@ -27,4 +27,13 @@ impl<'a> Context<'a> for &'a YamlValue {
             _ => None
         }
     }
+
+    fn is_truthy(&self) -> bool {
+        match self {
+            YamlValue::Null => false,
+            YamlValue::Bool(b) => *b,
+            YamlValue::Sequence(seq) => !seq.is_empty(),
+            _ => true
+        }
+    }
 }

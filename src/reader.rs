@@ -61,7 +61,7 @@ impl<'a> Reader<'a> {
             if text.starts_with("/") {
                 self.before_close = self.pos
             }
-            self.pos = if self.after_standalone > 0 && !self.input[self.pos + after_tag..].starts_with(&self.open_delimiter) {
+            self.pos = if self.after_standalone > self.pos && !self.input[self.pos + after_tag..].starts_with(&self.open_delimiter) {
                 self.after_standalone
             } else {
                 self.pos + after_tag
@@ -262,8 +262,8 @@ impl ReaderStringOps for str {
             None => return None
         };
         while let Some(od) = self[pos..eol].find(open_delimiter) {
-            match self[od + odl..].find(close_delimiter) {
-                Some(cd) => pos = od + odl + cd + cdl,
+             match self[od + odl..].find(close_delimiter) {
+                Some(cd) => pos += od + odl + cd + cdl,
                 None => return None
             };
             match self[pos..].find('\n') {
@@ -434,6 +434,19 @@ mod tests {
             "{{<*parent}}",
             vec![
                 Token::Partial("parent", true, true)
+            ]
+        )
+    }
+
+    #[test]
+    fn inner_section() {
+        expect_sequence(
+            "{{#a}}\n{{#b}}\n{{#c}}\n\n",
+            vec![
+                Token::Section("a"),
+                Token::Section("b"),
+                Token::Section("c"),
+                Token::Text("\n")
             ]
         )
     }

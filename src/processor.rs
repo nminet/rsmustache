@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-use crate::context::Stack;
+use crate::context::{Stack, PushResult};
 
 
 pub(crate) trait Segment: Debug {
@@ -71,7 +71,7 @@ impl<'a> SectionSegment<'a> {
     }
 
     fn render_single(&self, stack: &Stack) -> String {
-        println!("render {:?} with {:?}", self, stack);
+//        println!("render {:?} with {:?}", self, stack);
         self.children
             .iter()
             .map(|child| child.render(stack))
@@ -82,7 +82,19 @@ impl<'a> SectionSegment<'a> {
 
 impl<'a> Segment for SectionSegment<'a> {
     fn render(&self, stack: &Stack) -> String {
-        String::new()
+        match stack.push(self.name, true) {
+            PushResult::Single(stack) =>
+                 if stack.is_truthy() {
+                    self.render_single(&stack)
+                 } else {
+                    String::new()
+                 },
+            PushResult::List(stacks) =>
+                stacks.iter()
+                    .map(|stack| self.render_single(stack))
+                    .collect::<_>(),
+            PushResult::None => String::new()
+        }
     }
 }
 
@@ -100,11 +112,27 @@ impl<'a> InvertedSectionSegment<'a> {
             children
         }
     }
+
+    fn render_inverted(&self, is_falsy: bool, stack:&Stack) -> String {
+        if is_falsy {
+            self.children
+                .iter()
+                .map(|child| child.render(stack))
+                .collect::<Vec<String>>()
+                .concat()
+         } else {
+            String::new()
+         }
+    }
 }
 
 impl<'a> Segment for InvertedSectionSegment<'a> {
-    fn render(&self, _stack: &Stack)-> String {
-        self.name.to_string()
+    fn render(&self, stack: &Stack)-> String {
+        match stack.push(self.name, true) {
+            PushResult::Single(it) => self.render_inverted(!it.is_truthy(), &stack),
+            PushResult::List(it) =>self.render_inverted(it.is_empty(), &stack),
+            PushResult::None => String::new()
+        }
     }
 }
 
