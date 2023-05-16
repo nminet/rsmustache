@@ -3,15 +3,15 @@ use std::rc::Rc;
 
 
 pub trait Context<'a>: Debug {
-    fn child(&self, name: &str) -> Option<Boxed<'a>>;
-    fn children(&self) -> Vec<Boxed<'a>>;
+    fn child(&self, name: &str) -> Option<RcContext<'a>>;
+    fn children(&self) -> Vec<RcContext<'a>>;
     fn value(&self) -> Option<String>;
     fn is_truthy(&self) -> bool;
 }
 
-pub type Boxed<'a> = Rc<dyn Context<'a> + 'a>;
+pub type RcContext<'a> = Rc<dyn Context<'a> + 'a>;
 
-pub(crate) fn into_box<'a, T>(context: &'a T) -> Boxed<'a>
+pub fn into_rc<'a, T>(context: &'a T) -> RcContext<'a>
 where &'a T: Context<'a> {
     Rc::new(context)
 }
@@ -19,7 +19,7 @@ where &'a T: Context<'a> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Stack<'a> {
-    context: Rc<Boxed<'a>>,
+    context: RcContext<'a>,
     parent: Option<Rc<Stack<'a>>>
 }
 
@@ -34,14 +34,14 @@ impl<'a> Stack<'a> {
     pub(crate) fn root<T>(context: &'a T) -> Self
     where &'a T: Context<'a> {
         Stack {
-            context: Rc::new(into_box(context)),
+            context: Rc::new(context),
             parent: None
         }
     }
 
-    fn frame(&self, context: Boxed<'a>) -> Self {
+    fn frame(&self, context: RcContext<'a>) -> Self {
         Stack {
-            context: Rc::new(context),
+            context: context.clone(),
             parent: Some(Rc::new(self.clone()))
         }
     }
@@ -53,7 +53,7 @@ impl<'a> Stack<'a> {
         }
     }
 
-    fn push_obj_or_list(&self, context: Boxed<'a>) -> PushResult<'a> {
+    fn push_obj_or_list(&self, context: RcContext<'a>) -> PushResult<'a> {
         let children = context.children();
         if children.is_empty() {
             PushResult::Single(self.frame(context))

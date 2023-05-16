@@ -1,18 +1,18 @@
-use crate::context::{Context, Boxed, into_box};
+use crate::context::{Context, RcContext, into_rc};
 pub use serde_json::Value as JsonValue;
 
 
 impl<'a> Context<'a> for &'a JsonValue {
-    fn child(&self, name: &str) -> Option<Boxed<'a>> {
+    fn child(&self, name: &str) -> Option<RcContext<'a>> {
         self.get(name)
-            .map(into_box)
+            .map(into_rc)
     }
     
-    fn children(&self) -> Vec<Boxed<'a>> {
+    fn children(&self) -> Vec<RcContext<'a>> {
         match self {
             JsonValue::Array(seq) =>
                 seq.iter()
-                    .map(into_box)
+                    .map(into_rc)
                     .collect::<_>(),
             _ => vec![]
         }
