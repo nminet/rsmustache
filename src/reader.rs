@@ -1,4 +1,4 @@
-use std::{ops::Add, cmp};
+use std::{ops::Add, cmp::min};
 
 #[derive(Clone)]
 pub(crate) struct Reader<'a> {
@@ -14,12 +14,11 @@ impl<'a> Reader<'a> {
     pub(crate) fn new(input: &'a str) -> Self {
         let open_delimiter = "{{";
         let close_delimiter = "}}";
-        let eol = input.next_eol_in_text(open_delimiter, close_delimiter).unwrap_or(input.len());
-        let is_standalone = input[..eol].trim().is_standalone(open_delimiter, close_delimiter);
-        let (pos, after_standalone) = if is_standalone {
-            (input.find(open_delimiter).unwrap(), cmp::min(eol + 1, input.len()))
+        let after_standalone = input.span_standalone(open_delimiter, close_delimiter);
+        let pos = if after_standalone > 0 {
+            input.find(open_delimiter).unwrap()
         } else {
-            (0, 0)
+            0
         };
         Reader { 
             input,
@@ -59,13 +58,15 @@ impl<'a> Reader<'a> {
     fn read_tag(&mut self, tail: &'a str) -> Token<'a> {
         if let Some((text, after_tag)) = tail.span_tag(&self.open_delimiter, &self.close_delimiter) {
             if text.starts_with("/") {
-                self.before_close = self.pos
+                self.before_close = self.pos;
             }
-            self.pos = if self.after_standalone > self.pos && !self.input[self.pos + after_tag..].starts_with(&self.open_delimiter) {
-                self.after_standalone
-            } else {
-                self.pos + after_tag
-            };
+            self.pos += after_tag;
+            if self.pos < self.after_standalone {
+                self.pos = match self.input[self.pos..self.after_standalone].find(self.open_delimiter) {
+                    Some(p) if self.pos + p < self.after_standalone => self.pos + p,
+                    _ => self.after_standalone
+                }
+            }
             Token::tag(text)
         } else {
             self.pos = self.input.len();
@@ -174,34 +175,32 @@ impl<'a> Token<'a> {
 trait ReaderStringOps {
     fn span_text(&self, open_delimiter: &str, close_delimiter: &str) -> (&str, usize, usize);
     fn span_tag(&self, open_delimiter: &str, close_delimiter: &str) -> Option<(&str, usize)>;
-    fn is_standalone(&self, open_delimiter: &str, close_delimiter: &str) -> bool;
+    fn span_standalone(&self, open_delimiter: &str, close_delimiter: &str) -> usize;
     fn is_standalone_open(&self, open_delimiter: &str) -> bool;
-    fn next_eol_in_text(&self, open_delimiter: &str, close_delimiter: &str) -> Option<usize>;
     fn trim_sigil(&self) -> &str;
+    fn is_blank(&self, start: usize, len: usize) -> bool;
 }
 
 impl ReaderStringOps for str {
+    // return
+    // - the position after the current text
+    // - the position after the current text not part of a sequence of standalone tags
     fn span_text(&self, open_delimiter: &str, close_delimiter: &str) -> (&str, usize, usize) {
         let after_text = self.find(open_delimiter).unwrap_or(self.len());
         let mut end_of_text = after_text;
-        let mut after_standalone = 0;
+        let mut after_standalone = after_text;
         if let Some(eol_in_text) = self[..after_text].rfind("\n") {
-            if self[eol_in_text + 1..after_text].chars().all(|c: char| c.is_ascii_whitespace()) {
-                let after_next_eol = if let Some(p) = self[eol_in_text + 1..].next_eol_in_text(open_delimiter, close_delimiter) {
-                    eol_in_text + 1 + p + 1
-                } else {
-                    self.len()
-                };
-                if self[eol_in_text + 1..after_next_eol].trim().is_standalone(open_delimiter, close_delimiter) {
-                    // discard whitespace belonging to a line of standalone tags
-                    end_of_text = eol_in_text + 1;
-                    after_standalone = after_next_eol;
-                }
+            let p = self[eol_in_text + 1..].span_standalone(open_delimiter, close_delimiter);
+            if p > 0 {
+                end_of_text = eol_in_text + 1;
+                after_standalone = end_of_text + p;
             }
         };
         (&self[..end_of_text], after_text, after_standalone)
     }
 
+    // return the tag starting at beginning of the string and the position after the tag
+    // return None if the string does not start with a tag
     fn span_tag(&self, open_delimiter: &str, close_delimiter: &str) -> Option<(&str, usize)> {
         if let Some(c) = self.chars().nth(open_delimiter.len()) {
             if let Some(p) = match c {
@@ -226,23 +225,66 @@ impl ReaderStringOps for str {
         }
     }
 
-    fn is_standalone(&self, open_delimiter: &str, close_delimiter: &str) -> bool {
-        self.is_standalone_open(open_delimiter) && {
-            let odl = open_delimiter.len() + 1;
-            let cdl = close_delimiter.len();
-            let mut after: usize = odl;
-            let mut tail = &self[odl..];
-            while let Some(idx) = tail.find(close_delimiter) {
-                after += idx + cdl;
-                tail = &tail[idx + cdl..];
-                if tail.is_empty() || !tail.is_standalone_open(open_delimiter) {
+    // return the position following a sequence of standalone tags
+    // return 0 if the string does not start with a sequence of standalone tags
+    fn span_standalone(&self, open_delimiter: &str, close_delimiter: &str) -> usize {
+        let mut pos: usize = 0;
+        let mut after: usize = 0;
+        let mut od = match self.find(open_delimiter) {
+            Some(p)  => p,
+            _ => return 0
+        };
+        let mut cd: usize;
+        let cdl = close_delimiter.len();
+        loop {
+            if !self.is_blank(pos, od) {
+                break
+            };
+            if !self[od..].is_standalone_open(open_delimiter) {
+                break;
+            }
+            cd = match self[od..].find(close_delimiter) {
+                Some(p) => od + p + cdl,
+                _ => break
+            };
+            pos = cd;
+            let x0 = self[cd..].find(open_delimiter);
+            let x1 = self[cd..].find('\n');
+            od = match (x0, x1)  {
+                (Some(od), Some(eol)) => {
+                    if !self.is_blank(cd, cd + min(od, eol)) {
+                        break
+                    };
+                    if eol < od {
+                        after = cd + eol + 1;
+                        if !self.is_blank(after, cd + od) {
+                            break
+                        };
+                    };
+                    cd + od
+                },
+                (Some(od), None) => {
+                    if !self.is_blank(cd, cd + od) {
+                        break
+                    };
+                    cd + od
+                }
+                (None, Some(eol)) => {
+                    if !self.is_blank(cd, cd + eol) {
+                        break
+                    };
+                    after = cd + eol + 1;
                     break
                 }
-                after += odl;
-                tail = &tail[odl..];
-            }
-            after == self.len()
+                _ => {
+                    if self.is_blank(cd, self.len()) {
+                        after = self.len();
+                    }
+                    break
+                }
+            };
         }
+        after
     }
 
     fn is_standalone_open(&self, open_delimiter: &str) -> bool {
@@ -252,30 +294,14 @@ impl ReaderStringOps for str {
             && STRIPPABLE_SIGILS.contains(&self[open_delimiter.len()..].trim()[0..1])
     }
 
-    fn next_eol_in_text(&self, open_delimiter: &str, close_delimiter: &str) -> Option<usize> {
-        let odl = open_delimiter.len();
-        let cdl = close_delimiter.len();
-        let mut pos: usize = 0;
-        let mut eol: usize;
-        match self.find('\n') {
-            Some(p) => eol = p,
-            None => return None
-        };
-        while let Some(od) = self[pos..eol].find(open_delimiter) {
-             match self[od + odl..].find(close_delimiter) {
-                Some(cd) => pos += od + odl + cd + cdl,
-                None => return None
-            };
-            match self[pos..].find('\n') {
-                Some(p) => eol = pos + p,
-                None => return None
-            };
-        }
-        Some(eol)
-    }
-
     fn trim_sigil(&self) -> &str {
         self[1..].trim_start()
+    }
+
+    fn is_blank(&self, start: usize, after: usize) -> bool {
+        after == start || self[start..after].chars().all(
+            |c| c.is_ascii_whitespace()
+        )
     }
 }
 

@@ -1,42 +1,7 @@
 overview:
 tests:
-  - name: Deeply Nested Contexts
-    desc: All elements on the context stack should be accessible.
-    data:
-      a: { one: 1 }
-      b: { two: 2 }
-      c: { three: 3, d : { four : 4, five : 5 } }
-    template: |
-      {{#a}}
-      {{one}}
-      {{#b}}
-      {{one}}{{two}}{{one}}
-      {{#c}}
-      {{one}}{{two}}{{three}}{{two}}{{one}}
-      {{#d}}
-      {{one}}{{two}}{{three}}{{four}}{{three}}{{two}}{{one}}
-      {{#five}}
-      {{one}}{{two}}{{three}}{{four}}{{five}}{{four}}{{three}}{{two}}{{one}}
-      {{one}}{{two}}{{three}}{{four}}{{.}}6{{.}}{{four}}{{three}}{{two}}{{one}}
-      {{one}}{{two}}{{three}}{{four}}{{five}}{{four}}{{three}}{{two}}{{one}}
-      {{/five}}
-      {{one}}{{two}}{{three}}{{four}}{{three}}{{two}}{{one}}
-      {{/d}}
-      {{one}}{{two}}{{three}}{{two}}{{one}}
-      {{/c}}
-      {{one}}{{two}}{{one}}
-      {{/b}}
-      {{one}}
-      {{/a}}
-    expected: |
-      1
-      121
-      12321
-      1234321
-      123454321
-      12345654321
-      123454321
-      1234321
-      12321
-      121
-      1
+  - name: Standalone Line Endings
+    desc: '"\r\n" should be considered a newline for standalone tags.'
+    data: { boolean: true }
+    template: "|\r\n{{#boolean}}\r\n{{/boolean}}\r\n|"
+    expected: "|\r\n|"
