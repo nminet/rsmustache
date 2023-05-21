@@ -7,8 +7,6 @@ use crate::processor::{
     TextSegment,
     SectionSegment,
     InvertedSectionSegment,
-    BlockSegment,
-    PartialSegment,
     ValueSegment,
     Segment
 };
@@ -38,21 +36,6 @@ pub(crate) fn process<'a, 's: 'a>(
             Token::InvertedSection(name) => {
                 segments.add_item(
                     InvertedSectionSegment::new(name, process(reader, Some(name))?)
-                )
-            },
-            Token::Partial(name, is_dynamic, is_parent) => {
-                let children = if is_parent {
-                    Some(process(reader, Some(name))?)
-                } else {
-                    None
-                };
-                segments.add_item(
-                    PartialSegment::new(name, is_dynamic, children)
-                )
-            },
-            Token::Block(name) => {
-                segments.add_item(
-                    BlockSegment::new(name, process(reader, Some(name))?)
                 )
             },
             Token::EndSection(name) => {

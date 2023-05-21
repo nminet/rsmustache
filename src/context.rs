@@ -18,11 +18,17 @@ where &'a T: Context<'a> {
 
 
 #[derive(Clone, Debug)]
-pub(crate) struct Stack<'a> {
+struct Frame<'a> {
     context: RcContext<'a>,
-    parent: Option<Rc<Stack<'a>>>
+    parent_ok: bool
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct Stack<'a> {
+    frames: Vec<Frame<'a>>
+}
+
+#[derive(Debug)]
 pub(crate) enum PushResult<'a> {
     None,
     Single(Stack<'a>),
@@ -31,62 +37,117 @@ pub(crate) enum PushResult<'a> {
 
 
 impl<'a> Stack<'a> {
+
     pub(crate) fn root<T>(context: &'a T) -> Self
     where &'a T: Context<'a> {
-        Stack {
-            context: Rc::new(context),
-            parent: None
+        let mut frames: Vec<Frame<'a>> = Vec::new();
+        frames.push(
+            Frame {
+                context: into_rc(context),
+                parent_ok: false
+            }
+        );
+        Stack { frames }
+    }
+
+    fn extend(&self, context: RcContext<'a>, parent_ok: bool) -> Self {
+        let mut frames = self.frames.clone();
+        frames.push(
+            Frame {
+                context: Rc::clone(&context),
+                parent_ok
+            }
+        );
+        Stack { frames }
+    }
+
+    fn merge(&self, stack: Stack<'a>) -> Self {
+        let first = stack.frames.first().unwrap();
+        let rest = &stack.frames[1..];
+        let bridge = Frame {
+            context: first.context.clone(),
+            parent_ok: true
+        };
+        let mut frames = self.frames.clone();
+        frames.push(bridge);
+        frames.extend_from_slice(rest);
+        Stack { frames }
+    }
+
+    fn top(&self) -> &Frame<'a> {
+        &self.frames.last().unwrap()
+    }
+
+    fn context(&self) -> &RcContext<'a> {
+        &self.top().context
+    }
+
+    fn parent(&self) -> Option<Self> {
+        if self.top().parent_ok {
+            let frames = Vec::from(
+                &self.frames[..self.frames.len() - 1]
+            );
+            Some(Stack { frames })
+        } else {
+            None
         }
     }
 
-    fn frame(&self, context: RcContext<'a>) -> Self {
-        Stack {
-            context: context.clone(),
-            parent: Some(Rc::new(self.clone()))
-        }
-    }
-
-    fn push_from_parent(&self, name: &str, up_ok: bool) -> PushResult<'a> {
-        match &self.parent {
-            Some(parent) if up_ok => Rc::clone(&parent).push(name, up_ok),
-            _ => PushResult::None
+    fn push_from_parent(&self, name: &str, onto: &Stack<'a>) -> PushResult<'a> {
+        if let Some(parent) = self.parent() {
+            match parent.push(name) {
+                PushResult::Single(stack) =>
+                    PushResult::Single(
+                        onto.merge(stack)
+                    ),
+                PushResult::List(stacks) =>
+                    PushResult::List(
+                        stacks.into_iter()
+                            .map(|stack| onto.merge(stack))
+                            .collect::<_>()
+                    ),
+                PushResult::None =>
+                    parent.push_from_parent(name, onto)
+            }
+        } else {
+            PushResult::None
         }
     }
 
     fn push_obj_or_list(&self, context: RcContext<'a>) -> PushResult<'a> {
         let children = context.children();
         if children.is_empty() {
-            PushResult::Single(self.frame(context))
+            PushResult::Single(self.extend(context, true))
         } else {
             PushResult::List(
                 children.into_iter()
-                    .map(|context| self.frame(context))
+                    .map(|context| self.extend(context, true))
                     .collect::<_>()
             )
         }
     }
 
-    pub(crate) fn push(&self, name: &str, up_ok: bool) -> PushResult<'a> {
+    pub(crate) fn push(&self, name: &str) -> PushResult<'a> {
         if name == "." {
-            let children = self.context.children();
+            let children = self.context().children();
             if children.is_empty() {
                 PushResult::Single(self.clone())
             } else {
                 PushResult::List(
                     children.into_iter()
-                        .map(|context| self.frame(context))
+                        .map(|context| self.extend(context, true))
                         .collect()
                 )
             }
         } else if let Some(idx) = name.find(".") {
-            match self.context.child(&name[..idx]) {
-                Some(context) => self.frame(context).push(&name[idx + 1..], false),
-                _ => self.push_from_parent(name, up_ok)
+            match self.context().child(&name[..idx]) {
+                Some(context) => self.extend(context, false).push(&name[idx + 1..]),
+                _ => self.push_from_parent(name, self)
             }
         } else {
-            match self.context.child(name) {
+            match self.context().child(name) {
                 Some(context) => self.push_obj_or_list(context),
-                _ => self.push_from_parent(name, up_ok)
+                _ => self.push_from_parent(name, self)
             }
         }
     }
@@ -94,7 +155,7 @@ impl<'a> Stack<'a> {
     pub(crate) fn get(&self, name: &str) -> Option<String> {
         if name == "." {
             self.value()
-        } else if let PushResult::Single(item) = self.push(name, true) {
+        } else if let PushResult::Single(item) = self.push(name) {
             item.value()
         } else {
             None
@@ -102,11 +163,11 @@ impl<'a> Stack<'a> {
     }
 
     pub(crate) fn is_truthy(&self) -> bool {
-        self.context.is_truthy()
+        self.context().is_truthy()
     }
 
     pub(crate) fn value(&self) -> Option<String> {
-        self.context.value()
+        self.context().value()
     }
 }
 
@@ -133,7 +194,7 @@ mod tests {
             root.get("phones"),
             None
         );
-        let phones = root.push("phones", true);
+        let phones = root.push("phones");
         match phones {
             PushResult::List(seq) =>
                 assert_eq!(

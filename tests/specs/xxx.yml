@@ -1,7 +1,0 @@
-overview:
-tests:
-  - name: Standalone Line Endings
-    desc: '"\r\n" should be considered a newline for standalone tags.'
-    data: { boolean: true }
-    template: "|\r\n{{#boolean}}\r\n{{/boolean}}\r\n|"
-    expected: "|\r\n|"

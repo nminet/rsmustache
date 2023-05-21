@@ -1,4 +1,4 @@
-use std::{ops::Add, cmp::min};
+use std::cmp::min;
 
 #[derive(Clone)]
 pub(crate) struct Reader<'a> {
@@ -46,11 +46,7 @@ impl<'a> Reader<'a> {
 
     fn read_text(&mut self, tail: &'a str) -> Token<'a> {
         let (text, after_text, after_standalone) = tail.span_text(&self.open_delimiter, &self.close_delimiter);
-        self.after_standalone = if after_standalone > 0 {
-            self.pos + after_standalone
-        } else {
-            0
-        };
+        self.after_standalone = self.pos + after_standalone;
         self.pos += after_text;
         Token::text(&text)
     }
@@ -76,7 +72,8 @@ impl<'a> Reader<'a> {
 
     pub(crate) fn set_delimiters<'s: 'a>(&mut self, od: &'s str, cd: &'s str) {
         self.open_delimiter = od;
-        self.close_delimiter = cd
+        self.close_delimiter = cd;
+        self.after_standalone = self.input[self.pos..].span_standalone(od, cd);
     }
 }
 
@@ -90,8 +87,6 @@ pub(crate) enum Token<'a> {
     EndSection(&'a str),
     Value(&'a str, bool),
     Comment(&'a str),
-    Partial(&'a str, bool, bool),
-    Block(&'a str),
     Delimiters(&'a str, &'a str),
     Error(String)
 }
@@ -108,9 +103,6 @@ impl<'a> Token<'a> {
                 '^' => Token::inverted_section(text.trim_sigil()),           
                 '/' => Token::end_section(text.trim_sigil()),           
                 '=' => Token::delimiters(text.trim_sigil()),
-                '>' => Token::partial(text.trim_sigil(), false),
-                '<' => Token::partial(text.trim_sigil(), true),
-                '$' => Token::block(text.trim_sigil()),
                 '!' => Token::Comment(text.trim_sigil()),
                 '&' | '{' => Token::value(text.trim_sigil(), false),
                 _ => Token::value(text, true)
@@ -139,18 +131,6 @@ impl<'a> Token<'a> {
         } else {
             Token::error("invalid delimiters tag")
         }
-    }
-
-    fn partial(text: &str, is_parent: bool) -> Token {
-        match text.chars().nth(0) {
-            Some('*') => Token::tag_with_label(|t| Token::Partial(t, true, is_parent), text.trim_sigil()),
-            Some(_) => Token::tag_with_label(|t| Token::Partial(t, false, is_parent), text),
-            None => Token::error("missing tag name")
-        }
-    }
-
-    fn block(text: &str) -> Token {
-        Token::tag_with_label(Token::Block, text)
     }
 
     fn value(text: &str, escaped: bool) -> Token {
@@ -202,21 +182,17 @@ impl ReaderStringOps for str {
     // return the tag starting at beginning of the string and the position after the tag
     // return None if the string does not start with a tag
     fn span_tag(&self, open_delimiter: &str, close_delimiter: &str) -> Option<(&str, usize)> {
-        if let Some(c) = self.chars().nth(open_delimiter.len()) {
-            if let Some(p) = match c {
-                '{' => self.find(&String::from("}").add(close_delimiter)),
-                '=' => self.find(&String::from("=").add(close_delimiter)),
-                _ => self.find(close_delimiter)
-            } {
-                let odl = open_delimiter.len();
-                let cdl = if c == '{' || c== '=' {
-                    close_delimiter.len() + 1
-                } else {
-                    close_delimiter.len()
-                };
-                Some((&self[odl..p].trim(), p + cdl))
+        let odl = open_delimiter.len();
+        if let Some(c) = self.chars().nth(odl) {
+            let (cd, cdl) = match c {
+                '{' => (format!("{}{}", '}', close_delimiter), close_delimiter.len() + 1),
+                '=' => (format!("{}{}", '=', close_delimiter), close_delimiter.len() + 1),
+                _ => (close_delimiter.to_string(), close_delimiter.len())
+
+            };
+            if let Some(p) = self[odl..].find(&cd) {
+                Some((&self[odl..odl + p].trim(), odl + p + cdl))
             } else {
-                // close delimiter not found
                 None
             }
         } else {
@@ -235,6 +211,7 @@ impl ReaderStringOps for str {
             _ => return 0
         };
         let mut cd: usize;
+        let odl = open_delimiter.len();
         let cdl = close_delimiter.len();
         loop {
             if !self.is_blank(pos, od) {
@@ -243,8 +220,8 @@ impl ReaderStringOps for str {
             if !self[od..].is_standalone_open(open_delimiter) {
                 break;
             }
-            cd = match self[od..].find(close_delimiter) {
-                Some(p) => od + p + cdl,
+            cd = match self[od + odl..].find(close_delimiter) {
+                Some(p) => od + odl + p + cdl,
                 _ => break
             };
             pos = cd;
@@ -444,25 +421,6 @@ mod tests {
         )
     }
 
-    #[test]
-    fn partial_tag_with_dynamic_name() {
-        expect_sequence(
-            "{{>*parent}}",
-            vec![
-                Token::Partial("parent", true, false)
-            ]
-        )
-    }
-
-    #[test]
-    fn parent_tag_with_dynamic_name() {
-        expect_sequence(
-            "{{<*parent}}",
-            vec![
-                Token::Partial("parent", true, true)
-            ]
-        )
-    }
 
     #[test]
     fn inner_section() {

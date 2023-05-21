@@ -82,7 +82,7 @@ impl<'a> SectionSegment<'a> {
 
 impl<'a> Segment for SectionSegment<'a> {
     fn render(&self, stack: &Stack) -> String {
-        match stack.push(self.name, true) {
+        match stack.push(self.name) {
             PushResult::Single(stack) =>
                  if stack.is_truthy() {
                     self.render_single(&stack)
@@ -128,57 +128,11 @@ impl<'a> InvertedSectionSegment<'a> {
 
 impl<'a> Segment for InvertedSectionSegment<'a> {
     fn render(&self, stack: &Stack)-> String {
-        match stack.push(self.name, true) {
+        match stack.push(self.name) {
             PushResult::Single(it) => self.render_inverted(!it.is_truthy(), &stack),
-            PushResult::List(it) =>self.render_inverted(it.is_empty(), &stack),
-            PushResult::None => String::new()
+            PushResult::List(it) => self.render_inverted(it.is_empty(), &stack),
+            PushResult::None => self.render_inverted(true, &stack)
         }
-    }
-}
-
-
-#[derive(Debug)]
-pub(crate) struct PartialSegment<'a> {
-    name: &'a str,
-    is_dynamic: bool,
-    children: Option<Segments<'a>>
-}
-
-impl<'a> PartialSegment<'a> {
-    pub(crate) fn new(name: &'a str, is_dynamic: bool, children: Option<Segments<'a>>) -> Self {
-        PartialSegment {
-            name,
-            is_dynamic,
-            children
-        }
-    }
-}
-
-impl<'a> Segment for PartialSegment<'a> {
-    fn render(&self, _stack: &Stack) -> String {
-        self.name.to_string()
-    }
-}
-
-
-#[derive(Debug)]
-pub(crate) struct BlockSegment<'a> {
-    name: &'a str,
-    children: Segments<'a>
-}
-
-impl<'a> BlockSegment<'a> {
-    pub(crate) fn new(name: &'a str, children: Segments<'a>) -> Self {
-        BlockSegment {
-            name,
-            children
-        }
-    }
-}
-
-impl<'a> Segment for BlockSegment<'a> {
-    fn render(&self, _stack: &Stack) -> String {
-        self.name.to_string()
     }
 }
 
