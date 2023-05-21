@@ -71,12 +71,15 @@ impl<'a> SectionSegment<'a> {
     }
 
     fn render_single(&self, stack: &Stack) -> String {
-//        println!("render {:?} with {:?}", self, stack);
-        self.children
-            .iter()
-            .map(|child| child.render(stack))
-            .collect::<Vec<String>>()
-            .concat()
+        if stack.is_truthy() {
+            self.children
+                .iter()
+                .map(|child| child.render(stack))
+                .collect::<Vec<String>>()
+                .concat()
+            } else {
+                String::new()
+            }
     }
 }
 
@@ -84,11 +87,7 @@ impl<'a> Segment for SectionSegment<'a> {
     fn render(&self, stack: &Stack) -> String {
         match stack.push(self.name) {
             PushResult::Single(stack) =>
-                 if stack.is_truthy() {
-                    self.render_single(&stack)
-                 } else {
-                    String::new()
-                 },
+                 self.render_single(&stack),
             PushResult::List(stacks) =>
                 stacks.iter()
                     .map(|stack| self.render_single(stack))
