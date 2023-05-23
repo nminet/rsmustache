@@ -2,7 +2,12 @@ extern crate mustache;
 use mustache::{Template, YamlValue};
 
 use std::fs;
-use serde::Deserialize;
+use serde::{Deserialize};
+
+#[test]
+fn xxx_test() -> Result<(), ()> {
+    run_spec_file("xxx.yml")
+}
 
 #[test]
 fn comments_test() -> Result<(), ()> {
@@ -22,6 +27,11 @@ fn sections_test() -> Result<(), ()> {
 #[test]
 fn inverted_test() -> Result<(), ()> {
     run_spec_file("inverted.yml")
+}
+
+#[test]
+fn partials_test() -> Result<(), ()> {
+    run_spec_file("partials.yml")
 }
 
 #[test]
@@ -75,8 +85,7 @@ fn run_spec_test(test: &YamlTestSpec) -> Result<(), String> {
     let template = Template::from(&test.template).unwrap();
     let result = template.render(&test.data);
     if result != test.expected {
-        println!("
-        {}: fail", test.name);
+        println!("{}: fail", test.name);
         println!("expected:\n{}", test.expected);
         println!("received:\n{}\n", result);
         Err(test.name.clone())

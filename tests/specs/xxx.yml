@@ -1,0 +1,8 @@
+overview:
+tests:
+  - name: Basic Behavior
+    desc: The greater-than operator should expand to the named partial.
+    data: { }
+    template: '"{{>text}}"'
+    partials: { text: 'from partial' }
+    expected: '"from partial"'

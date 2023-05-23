@@ -9,6 +9,9 @@ pub trait Context<'a>: Debug {
     fn is_truthy(&self) -> bool;
 }
 
+// Use an RC to ref as dotted names require the same data available
+// in multiple stack frames. Since the actual Context implementation
+// may be defined in an external crate, cloning may not be desirable.
 pub type RcContext<'a> = Rc<dyn Context<'a> + 'a>;
 
 pub fn into_rc<'a, T>(context: &'a T) -> RcContext<'a>
@@ -24,6 +27,9 @@ struct Frame<'a> {
 }
 
 #[derive(Clone, Debug)]
+// Use a vector to keep implementation simple. The alternative would be
+// a variation on linked list. The tradeof is copies of stack states.
+// As mustache stacks are not very deep this seems acceptabe for now.
 pub(crate) struct Stack<'a> {
     frames: Vec<Frame<'a>>
 }
@@ -40,24 +46,22 @@ impl<'a> Stack<'a> {
 
     pub(crate) fn root<T>(context: &'a T) -> Self
     where &'a T: Context<'a> {
+        let root = Frame {
+            context: into_rc(context),
+            parent_ok: false
+        };
         let mut frames: Vec<Frame<'a>> = Vec::new();
-        frames.push(
-            Frame {
-                context: into_rc(context),
-                parent_ok: false
-            }
-        );
+        frames.push(root);
         Stack { frames }
     }
 
     fn extend(&self, context: RcContext<'a>, parent_ok: bool) -> Self {
+        let top = Frame {
+            context: Rc::clone(&context),
+            parent_ok
+        };
         let mut frames = self.frames.clone();
-        frames.push(
-            Frame {
-                context: Rc::clone(&context),
-                parent_ok
-            }
-        );
+        frames.push(top);
         Stack { frames }
     }
 
@@ -65,7 +69,7 @@ impl<'a> Stack<'a> {
         let first = stack.frames.first().unwrap();
         let rest = &stack.frames[1..];
         let bridge = Frame {
-            context: first.context.clone(),
+            context: Rc::clone(&first.context),
             parent_ok: true
         };
         let mut frames = self.frames.clone();
@@ -166,7 +170,7 @@ impl<'a> Stack<'a> {
         self.context().is_truthy()
     }
 
-    pub(crate) fn value(&self) -> Option<String> {
+    fn value(&self) -> Option<String> {
         self.context().value()
     }
 }
