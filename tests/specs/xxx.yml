@@ -1,8 +1,9 @@
 overview:
 tests:
-  - name: Basic Behavior
-    desc: The greater-than operator should expand to the named partial.
-    data: { }
-    template: '"{{>text}}"'
-    partials: { text: 'from partial' }
-    expected: '"from partial"'
+  - name: Implicit Iterator - Array
+    desc: Implicit iterators should allow iterating over nested arrays.
+    data:
+      list: [ [1, 2, 3], ['a', 'b', 'c'] ]
+    template: '"{{#list}}({{#.}}{{.}}{{/.}}){{/list}}"'
+    expected: '"(123)(abc)"'
+    

@@ -1,6 +1,7 @@
 use std::fmt::Debug;
+use crate::{Context, into_rc};
 use crate::reader::{Reader, Token};
-use crate::context::{Context, Stack, PushResult};
+use crate::context::Stack;
 
 
 pub struct Template<'a>{
@@ -16,10 +17,11 @@ impl<'a> Template<'a> {
 
     pub fn render<'c, T>(&self, context: &'c T) -> String
     where &'c T: Context<'c> {
-        let stack = Stack::root(&context);
+        let context = into_rc(context);
+        let mut stack = Stack::new(&context);
         self.segments
             .iter()
-            .map(|s| s.render(&stack))
+            .map(|s| s.render(&mut stack))
             .collect::<Vec<_>>()
             .concat()
     }
@@ -73,8 +75,7 @@ fn parse<'a, 's: 'a>(
 
 
 trait Segment: Debug {
-    fn render(&self, stack: &Stack) -> String;
-    fn substitute(&self) {}
+    fn render(&self, stack: &mut Stack) -> String;
 }
 
 type Segments<'a> = Vec<Box<dyn Segment + 'a>>;
@@ -94,7 +95,7 @@ impl<'a> TextSegment<'a> {
 }
 
 impl<'a> Segment for TextSegment<'a> {
-    fn render<'s>(&self, _stack: &Stack) -> String {
+    fn render<'s>(&self, _stack: &mut Stack) -> String {
         self.text.to_string()
     }
 }
@@ -116,7 +117,7 @@ impl<'a> ValueSegment<'a> {
 }
 
 impl<'a> Segment for ValueSegment<'a> {
-    fn render(&self, stack: &Stack) -> String {
+    fn render(&self, stack: &mut Stack) -> String {
         let text = stack.get(self.name).unwrap_or_default();
         match self.is_escaped {
             true => html_escape(text.to_string()),
@@ -139,34 +140,31 @@ impl<'a> SectionSegment<'a> {
             children
         }
     }
-
-    fn render_single(&self, stack: &Stack) -> String {
-        if stack.is_truthy() {
-        self.children
-            .iter()
-            .map(|child| child.render(stack))
-            .collect::<Vec<String>>()
-            .concat()
-        } else {
-            String::new()
-        }
-    }
 }
 
 impl<'a> Segment for SectionSegment<'a> {
-    fn render(&self, stack: &Stack) -> String {
-        match stack.push(self.name) {
-            PushResult::Single(stack) =>
-                self.render_single(&stack),
-            PushResult::List(stacks) =>
-                stacks.iter()
-                    .map(|stack| self.render_single(stack))
-                    .collect::<_>(),
-            PushResult::None => String::new()
-        }
+    fn render(&self, stack: &mut Stack) -> String {
+        let mut result = String::new();
+        let len = stack.len();
+        if stack.push(self.name) && stack.is_truthy() {
+            while stack.current().is_some() {
+                result.push_str( &self.children.render(stack));
+                stack.next();
+            }
+        };
+        stack.truncate(len);
+        result
     }
 }
 
+impl<'a> Segment for Segments<'a> {
+    fn render(&self, stack: &mut Stack) -> String {
+        self.iter()
+            .map(|child| child.render(stack))
+            .collect::<Vec<_>>()
+            .concat()
+    }
+}
 
 #[derive(Debug)]
 struct InvertedSectionSegment<'a> {
@@ -181,26 +179,18 @@ impl<'a> InvertedSectionSegment<'a> {
             children
         }
     }
-
-    fn render_inverted(&self, is_falsy: bool, stack:&Stack) -> String {
-        if is_falsy {
-            self.children
-                .iter()
-                .map(|child| child.render(stack))
-                .collect::<Vec<String>>()
-                .concat()
-         } else {
-            String::new()
-         }
-    }
 }
 
 impl<'a> Segment for InvertedSectionSegment<'a> {
-    fn render(&self, stack: &Stack)-> String {
-        match stack.push(self.name) {
-            PushResult::Single(it) => self.render_inverted(!it.is_truthy(), &stack),
-            PushResult::List(it) => self.render_inverted(it.is_empty(), &stack),
-            PushResult::None => self.render_inverted(true, &stack)
+    fn render(&self, stack: &mut Stack)-> String {
+        let len = stack.len();
+        let pushed = stack.push(self.name);
+        let falsy = !pushed || !stack.is_truthy();
+        stack.truncate(len);
+        if falsy {
+            self.children.render(stack)
+        } else {
+            String::new()
         }
     }
 }

@@ -8,13 +8,15 @@ impl<'a> Context<'a> for &'a JsonValue {
             .map(into_rc)
     }
     
-    fn children(&self) -> Vec<RcContext<'a>> {
+    fn children(&self) -> Option<Vec<RcContext<'a>>> {
         match self {
             JsonValue::Array(seq) =>
-                seq.iter()
-                    .map(into_rc)
-                    .collect::<_>(),
-            _ => vec![]
+                Some(
+                    seq.iter()
+                        .map(into_rc)
+                        .collect::<_>()
+                ),
+            _ => None
         }
     }
 

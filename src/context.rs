@@ -1,10 +1,11 @@
 use std::fmt::Debug;
 use std::rc::Rc;
+use std::collections::VecDeque;
 
 
 pub trait Context<'a>: Debug {
     fn child(&self, name: &str) -> Option<RcContext<'a>>;
-    fn children(&self) -> Vec<RcContext<'a>>;
+    fn children(&self) -> Option<Vec<RcContext<'a>>>;
     fn value(&self) -> Option<String>;
     fn is_truthy(&self) -> bool;
 }
@@ -20,198 +21,255 @@ where &'a T: Context<'a> {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct Frame<'a> {
-    context: RcContext<'a>,
-    parent_ok: bool
+    // VecDeque to avoid quadratic complexity when removing from start.
+    contexts: VecDeque<RcContext<'a>>,
+    resolve_down: bool
 }
 
-#[derive(Clone, Debug)]
-// Use a vector to keep implementation simple. The alternative would be
-// a variation on linked list. The tradeof is copies of stack states.
-// As mustache stacks are not very deep this seems acceptabe for now.
-pub(crate) struct Stack<'a> {
-    frames: Vec<Frame<'a>>
+impl<'a> Frame<'a> {
+    fn new(contexts: Vec<RcContext<'a>>, resolve_down: bool) -> Self {
+        let contexts = VecDeque::from(contexts);
+        Frame {
+            contexts,
+            resolve_down
+        }
+    }
+
+    fn current(&self) -> Option<&RcContext<'a>> {
+        self.contexts.front()
+    }
+
+    fn next(&mut self) -> bool {
+        self.contexts.pop_front();
+        !self.contexts.is_empty()
+    }
 }
+
+impl<'a> Clone for Frame<'a> {
+    fn clone(&self) -> Self {
+        let contexts = self.contexts.iter()
+            .map(|context| Rc::clone(context))
+            .collect::<_>();
+        Frame {
+            contexts,
+            resolve_down: self.resolve_down
+        }
+    }
+}
+
 
 #[derive(Debug)]
-pub(crate) enum PushResult<'a> {
-    None,
-    Single(Stack<'a>),
-    List(Vec<Stack<'a>>)
+pub(crate) struct Stack<'a> {
+    frames: Vec<Frame<'a>>,
+    backtrack_depth: usize
 }
 
-
 impl<'a> Stack<'a> {
-
-    pub(crate) fn root<T>(context: &'a T) -> Self
-    where &'a T: Context<'a> {
-        let root = Frame {
-            context: into_rc(context),
-            parent_ok: false
-        };
-        let mut frames: Vec<Frame<'a>> = Vec::new();
-        frames.push(root);
-        Stack { frames }
+    pub(crate) fn new(root: &RcContext<'a>) -> Self {
+        let frame = Frame::new(vec![Rc::clone(root)], false);
+        let frames = vec![frame];
+        Stack { 
+            frames,
+            backtrack_depth: 0
+        }
     }
 
-    fn extend(&self, context: RcContext<'a>, parent_ok: bool) -> Self {
-        let top = Frame {
-            context: Rc::clone(&context),
-            parent_ok
-        };
-        let mut frames = self.frames.clone();
-        frames.push(top);
-        Stack { frames }
+    fn backtracking(&self) -> Self {
+        let len = self.frames.len() - 1;
+        let frames = Vec::from(&self.frames[..len]);
+        Stack {
+            frames,
+            backtrack_depth: 1
+        }
     }
 
-    fn merge(&self, stack: Stack<'a>) -> Self {
-        let first = stack.frames.first().unwrap();
-        let rest = &stack.frames[1..];
-        let bridge = Frame {
-            context: Rc::clone(&first.context),
-            parent_ok: true
-        };
-        let mut frames = self.frames.clone();
-        frames.push(bridge);
-        frames.extend_from_slice(rest);
-        Stack { frames }
+    pub(crate) fn len(&self) -> usize {
+        self.frames.len()
+    }
+
+    pub(crate) fn truncate(&mut self, len: usize) {
+        self.frames.truncate(len);
+    }
+
+    fn push_dotted(&mut self, name: &str, dotted: bool) -> bool {
+        if name == "." {
+            if let Some(children) = self.children() {
+                self.frames.push(
+                    Frame::new(children, !dotted)
+                )
+            };
+            true
+        } else if let Some(idx) = name.find(".") {
+            let (head, tail) = name.split_at(idx);
+            self.push_dotted(head, true) && self.push(&tail[1..])
+
+        } else if let Some(context) = self.child(name) {
+            let contexts = if let Some(children) = context.children() {
+                children
+            } else {
+                vec![context]
+            };
+            let frame = Frame::new(contexts, !dotted);
+            self.frames.push(frame);
+            true
+        
+        } else {
+            let mut resolved = false;
+            if self.top().resolve_down {
+                let mut ts = self.backtracking();
+                loop {
+                    resolved = ts.push(name);
+                    if resolved || !ts.top().resolve_down {
+                        break;
+                    }
+                    ts.down();
+                }
+                if resolved {
+                    self.merge(ts);
+                }
+            }
+            resolved
+        }
+    }
+
+    pub(crate) fn push(&mut self, name: &str) -> bool {
+        self.push_dotted(name, false)
+    }
+
+    pub(crate) fn next(&mut self) -> bool {
+        let mut frame = self.frames.pop().unwrap();
+        let more = frame.next();
+        self.frames.push(frame);
+        more
+    }
+
+    fn down(&mut self) -> bool {
+        let len = self.frames.len();
+        if len > 1 {
+            self.frames.truncate(len - 1);
+            if self.backtrack_depth > 0 {
+                self.backtrack_depth += 1;
+            }
+            true
+        } else {
+            false
+        }
     }
 
     fn top(&self) -> &Frame<'a> {
-        &self.frames.last().unwrap()
+        self.frames.last().unwrap()
     }
 
-    fn context(&self) -> &RcContext<'a> {
-        &self.top().context
+    pub(crate) fn current(&self) -> Option<&RcContext<'a>> {
+        self.top().current()
     }
 
-    fn parent(&self) -> Option<Self> {
-        if self.top().parent_ok {
-            let frames = Vec::from(
-                &self.frames[..self.frames.len() - 1]
-            );
-            Some(Stack { frames })
-        } else {
-            None
-        }
+    fn child(&self, name: &str)  -> Option<RcContext<'a>> {
+        self.current()?.child(name)
     }
 
-    fn push_from_parent(&self, name: &str, onto: &Stack<'a>) -> PushResult<'a> {
-        if let Some(parent) = self.parent() {
-            match parent.push(name) {
-                PushResult::Single(stack) =>
-                    PushResult::Single(
-                        onto.merge(stack)
-                    ),
-                PushResult::List(stacks) =>
-                    PushResult::List(
-                        stacks.into_iter()
-                            .map(|stack| onto.merge(stack))
-                            .collect::<_>()
-                    ),
-                PushResult::None =>
-                    parent.push_from_parent(name, onto)
-            }
-        } else {
-            PushResult::None
-        }
-    }
-
-    fn push_obj_or_list(&self, context: RcContext<'a>) -> PushResult<'a> {
-        let children = context.children();
-        if children.is_empty() {
-            PushResult::Single(self.extend(context, true))
-        } else {
-            PushResult::List(
-                children.into_iter()
-                    .map(|context| self.extend(context, true))
-                    .collect::<_>()
-            )
-        }
-    }
-
-    pub(crate) fn push(&self, name: &str) -> PushResult<'a> {
-        if name == "." {
-            let children = self.context().children();
-            if children.is_empty() {
-                PushResult::Single(self.clone())
-            } else {
-                PushResult::List(
-                    children.into_iter()
-                        .map(|context| self.extend(context, true))
-                        .collect()
-                )
-            }
-        } else if let Some(idx) = name.find(".") {
-            match self.context().child(&name[..idx]) {
-                Some(context) => self.extend(context, false).push(&name[idx + 1..]),
-                _ => self.push_from_parent(name, self)
-            }
-        } else {
-            match self.context().child(name) {
-                Some(context) => self.push_obj_or_list(context),
-                _ => self.push_from_parent(name, self)
-            }
-        }
-    }
-
-    pub(crate) fn get(&self, name: &str) -> Option<String> {
-        if name == "." {
-            self.value()
-        } else if let PushResult::Single(item) = self.push(name) {
-            item.value()
-        } else {
-            None
-        }
-    }
-
-    pub(crate) fn is_truthy(&self) -> bool {
-        self.context().is_truthy()
+    fn children(&self)  -> Option<Vec<RcContext<'a>>> {
+        self.current()?.children()
     }
 
     fn value(&self) -> Option<String> {
-        self.context().value()
+        self.current()?.value()
+    }
+
+    pub(crate) fn get(&mut self, name: &str) -> Option<String> {
+        let len = self.len();
+        self.push(name);
+        let result = self.current()?.value();
+        self.truncate(len);
+        result
+    }
+
+    pub(crate) fn is_truthy(&self) -> bool {
+        self.current().map_or(
+            false,
+             |context| context.is_truthy()
+        )
+    }
+
+    fn merge(&mut self, other: Stack<'a>) {
+        let unchanged = self.frames.len() - other.backtrack_depth;
+        self.frames.extend_from_slice(&other.frames[unchanged..]);
     }
 }
 
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
-    use crate::{JsonValue};
+    use crate::{JsonValue, into_rc};
 
     #[test]
-    fn single_value() {
+    fn basic_access() {
         let json = json1();
-        let root = Stack::root(&json);
+        let root = into_rc(&json);
+        let mut stack = Stack::new(&root);
 
-        assert_eq!(
-            root.get("name"),
-            Some(String::from("John Doe"))
-        );
-        assert_eq!(
-            root.get("age"),
-            Some(String::from("43"))
-        );
-        assert_eq!(
-            root.get("phones"),
-            None
-        );
-        let phones = root.push("phones");
-        match phones {
-            PushResult::List(seq) =>
-                assert_eq!(
-                    seq.into_iter()
-                        .map(|s| s.value().unwrap())
-                        .collect::<Vec<String>>(),
-                    vec![
-                        String::from("+44 1234567"),
-                        String::from("+44 2345678")
-                    ]
-                ),
-            _ => assert!(false)
-        }
+        assert_eq!(stack.get("name").unwrap(), "John Doe");
+        assert!(!stack.push("xxx"));
+        assert!(stack.push("phones"));
+        assert_eq!(stack.get("prefix").unwrap(), "+44");
+        assert_eq!(stack.get("extension").unwrap(), "1234567");
+        assert!(stack.get("aaa").is_none());
+        assert!(stack.next());
+        assert_eq!(stack.get("prefix").unwrap(), "+44");
+        assert_eq!(stack.get("extension").unwrap(), "2345678");
+        assert!(!stack.next());
+        assert!(stack.down());
+        assert_eq!(stack.get("age").unwrap(), "43");
+        assert!(!stack.down());
+    }
+
+    #[test]
+    fn normal_backtrack() {
+        let json = json1();
+        let root = into_rc(&json);
+        let mut stack = Stack::new(&root);
+
+        stack.push("phones");
+        assert!(stack.push("stuff"));
+        assert_eq!(stack.value().unwrap(), "item1");
+        assert!(stack.next());
+        assert_eq!(stack.value().unwrap(), "item2");
+        assert!(!stack.next());
+        assert!(stack.down());
+        assert_eq!(stack.get("extension").unwrap(), "1234567");
+   }
+
+    #[test]
+   fn dotted_from_top() {
+        let json = json1();
+        let root = into_rc(&json);
+        let mut stack = Stack::new(&root);
+
+        assert!(stack.push("obj.part2"));
+        assert_eq!(stack.value().unwrap(), "yyy");
+   }
+
+    #[test]
+   fn dotted_after_backtrack() {
+        let json = json1();
+        let root = into_rc(&json);
+        let mut stack = Stack::new(&root);
+
+        stack.push("phones");
+        assert!(stack.push("obj.part2"));
+        assert_eq!(stack.value().unwrap(), "yyy");
+   }
+
+    #[test]
+    fn broken_chain() {
+        let json = json1();
+        let root = into_rc(&json);
+        let mut stack = Stack::new(&root);
+
+        assert!(!stack.push("obj.part1.part2"));
     }
 
     fn json1() -> JsonValue {
@@ -220,9 +278,23 @@ mod tests {
             "name": "John Doe",
             "age": 43,
             "phones": [
-                "+44 1234567",
-                "+44 2345678"
-            ]
+                {
+                    "prefix": "+44",
+                    "extension": "1234567"
+                },
+                {
+                    "prefix": "+44",
+                    "extension": "2345678"
+                }
+            ],
+            "stuff": [
+                "item1",
+                "item2"
+            ],
+            "obj": {
+                "part1": "xxx",
+                "part2": "yyy"
+            }
         }"#;
         serde_json::from_str::<JsonValue>(data).unwrap()
     }
