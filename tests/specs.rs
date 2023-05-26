@@ -2,60 +2,57 @@ extern crate mustache;
 use mustache::{Template, YamlValue};
 
 use std::fs;
-use serde::{Deserialize};
+use serde::Deserialize;
 
 #[test]
-fn xxx_test() -> Result<(), ()> {
-    run_spec_file("xxx.yml")
+fn xxx_test() -> Result<(), String> {
+    run_spec_file("xxx.yml", true)
 }
 
 #[test]
-fn comments_test() -> Result<(), ()> {
-    run_spec_file("comments.yml")
+fn comments_test() -> Result<(), String> {
+    run_spec_file("comments.yml", false)
 }
 
 #[test]
-fn interpolation_test() -> Result<(), ()> {
-    run_spec_file("interpolation.yml")
+fn interpolation_test() -> Result<(), String> {
+    run_spec_file("interpolation.yml", false)
 }
 
 #[test]
-fn sections_test() -> Result<(), ()> {
-    run_spec_file("sections.yml")
+fn sections_test() -> Result<(), String> {
+    run_spec_file("sections.yml", false)
 }
 
 #[test]
-fn inverted_test() -> Result<(), ()> {
-    run_spec_file("inverted.yml")
+fn inverted_test() -> Result<(), String> {
+    run_spec_file("inverted.yml", false)
 }
 
 #[test]
-fn partials_test() -> Result<(), ()> {
-    run_spec_file("partials.yml")
+fn partials_test() -> Result<(), String> {
+    run_spec_file("partials.yml", false)
 }
 
 #[test]
-fn delimiters_test() -> Result<(), ()> {
-    run_spec_file("delimiters.yml")
+fn delimiters_test() -> Result<(), String> {
+    run_spec_file("delimiters.yml", false)
 }
 
 
-fn run_spec_file(path: &str) -> Result<(), ()> {
+fn run_spec_file(path: &str, log: bool) -> Result<(), String> {
     yaml_spec(path)?
         .tests
         .iter()
         .fold(
             Ok(()),
-            |acc, test| match (acc, run_spec_test(test)) {
+            |acc, test| match (acc, run_spec_test(test, log)) {
                 (acc, Ok(())) => acc,
-                (Ok(()), Err(name)) => Err(format!("  {}", name)),
-                (Err(names), Err(name)) => Err(format!("{}\n  {}", names, name))
+                (Ok(()), Err(name)) => Err(format!("specs ({}): {}", path, name)),
+                (Err(err), Err(name)) => Err(format!("{}, {}", err, name))
             }
-        ).map_err(
-            |names| println!("failed:\n{}", names)
         )
 }
-
 
 #[derive(Deserialize, Debug)]
 struct YamlSpecFile {
@@ -70,24 +67,25 @@ struct YamlTestSpec {
     expected: String,
 }
 
-fn yaml_spec(name: &str) -> Result<YamlSpecFile, ()> {
+fn yaml_spec(name: &str) -> Result<YamlSpecFile, String> {
     let path = format!("tests/specs/{}", name);
     let text = fs::read_to_string(path).map_err(
-        |err| println!("io: {}", err.to_string())
+        |err| format!("io: {}", err.to_string())
     )?;
     serde_yaml::from_str::<YamlSpecFile>(&text).map_err(
-        |err| println!("yaml: {}", err.to_string())
+        |err| format!("yaml: {}", err.to_string())
     )
 }
 
-
-fn run_spec_test(test: &YamlTestSpec) -> Result<(), String> {
+fn run_spec_test(test: &YamlTestSpec, log: bool) -> Result<(), String> {
     let template = Template::from(&test.template).unwrap();
     let result = template.render(&test.data);
     if result != test.expected {
-        println!("{}: fail", test.name);
-        println!("expected:\n{}", test.expected);
-        println!("received:\n{}\n", result);
+        if log {
+            println!("{}: fail", test.name);
+            println!("expected:\n{}", test.expected);
+            println!("received:\n{}\n", result);
+        };
         Err(test.name.clone())
     } else {
         println!("{}: ok", test.name);
