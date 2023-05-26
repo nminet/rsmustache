@@ -1,20 +1,21 @@
-use crate::{Context, RcContext, into_rc};
+use crate::{Context, ContextRef};
 pub use serde_json::Value as JsonValue;
 
 
-impl<'a> Context<'a> for &'a JsonValue {
-    fn child(&self, name: &str) -> Option<RcContext<'a>> {
-        self.get(name)
-            .map(into_rc)
+impl<'a> Context<'a> for JsonValue {
+    fn child(&'a self, name: &str) -> Option<ContextRef<'a>> {
+        self.get(name).map(
+            |value| value as ContextRef<'a>
+        )
     }
     
-    fn children(&self) -> Option<Vec<RcContext<'a>>> {
+    fn children(&'a self) -> Option<Vec<ContextRef<'a>>> {
         match self {
             JsonValue::Array(seq) =>
                 Some(
                     seq.iter()
-                        .map(into_rc)
-                        .collect::<_>()
+                        .map(|value| value as ContextRef<'a>)
+                        .collect::<Vec<_>>()
                 ),
             _ => None
         }

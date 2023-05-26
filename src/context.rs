@@ -1,35 +1,26 @@
 use std::fmt::Debug;
-use std::rc::Rc;
 use std::collections::VecDeque;
 
 
 pub trait Context<'a>: Debug {
-    fn child(&self, name: &str) -> Option<RcContext<'a>>;
-    fn children(&self) -> Option<Vec<RcContext<'a>>>;
+    fn child(&'a self, name: &str) -> Option<ContextRef<'a>>;
+    fn children(&'a self) -> Option<Vec<ContextRef<'a>>>;
     fn value(&self) -> Option<String>;
     fn is_truthy(&self) -> bool;
 }
 
-// Use an RC to ref as dotted names require the same data available
-// in multiple stack frames. Since the actual Context implementation
-// may be defined in an external crate, cloning may not be desirable.
-pub type RcContext<'a> = Rc<dyn Context<'a> + 'a>;
-
-pub fn into_rc<'a, T>(context: &'a T) -> RcContext<'a>
-where &'a T: Context<'a> {
-    Rc::new(context)
-}
+pub type ContextRef<'a> = &'a dyn Context<'a>;
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Frame<'a> {
     // VecDeque to avoid quadratic complexity when removing from start.
-    contexts: VecDeque<RcContext<'a>>,
+    contexts: VecDeque<ContextRef<'a>>,
     resolve_down: bool
 }
 
 impl<'a> Frame<'a> {
-    fn new(contexts: Vec<RcContext<'a>>, resolve_down: bool) -> Self {
+    fn new(contexts: Vec<ContextRef<'a>>, resolve_down: bool) -> Self {
         let contexts = VecDeque::from(contexts);
         Frame {
             contexts,
@@ -37,7 +28,7 @@ impl<'a> Frame<'a> {
         }
     }
 
-    fn current(&self) -> Option<&RcContext<'a>> {
+    fn current(&self) -> Option<&ContextRef<'a>> {
         self.contexts.front()
     }
 
@@ -47,28 +38,16 @@ impl<'a> Frame<'a> {
     }
 }
 
-impl<'a> Clone for Frame<'a> {
-    fn clone(&self) -> Self {
-        let contexts = self.contexts.iter()
-            .map(|context| Rc::clone(context))
-            .collect::<_>();
-        Frame {
-            contexts,
-            resolve_down: self.resolve_down
-        }
-    }
-}
 
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Stack<'a> {
     frames: Vec<Frame<'a>>,
     backtrack_depth: usize
 }
 
 impl<'a> Stack<'a> {
-    pub(crate) fn new(root: &RcContext<'a>) -> Self {
-        let frame = Frame::new(vec![Rc::clone(root)], false);
+    pub(crate) fn new(root: ContextRef<'a>) -> Self {
+        let frame = Frame::new(vec![root], false);
         let frames = vec![frame];
         Stack { 
             frames,
@@ -162,15 +141,15 @@ impl<'a> Stack<'a> {
         self.frames.last().unwrap()
     }
 
-    pub(crate) fn current(&self) -> Option<&RcContext<'a>> {
+    pub(crate) fn current(&self) -> Option<&ContextRef<'a>> {
         self.top().current()
     }
 
-    fn child(&self, name: &str)  -> Option<RcContext<'a>> {
+    fn child(&self, name: &str)  -> Option<ContextRef<'a>> {
         self.current()?.child(name)
     }
 
-    fn children(&self)  -> Option<Vec<RcContext<'a>>> {
+    fn children(&self)  -> Option<Vec<ContextRef<'a>>> {
         self.current()?.children()
     }
 
@@ -179,11 +158,15 @@ impl<'a> Stack<'a> {
     }
 
     pub(crate) fn get(&mut self, name: &str) -> Option<String> {
-        let len = self.len();
-        self.push(name);
-        let result = self.current()?.value();
-        self.truncate(len);
-        result
+        if name == "." {
+            self.value()
+        } else {
+            let len = self.len();
+            self.push(name);
+            let result = self.value();
+            self.truncate(len);
+            result
+        }
     }
 
     pub(crate) fn is_truthy(&self) -> bool {
@@ -203,12 +186,11 @@ impl<'a> Stack<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{JsonValue, into_rc};
+    use crate::JsonValue;
 
     #[test]
     fn basic_access() {
-        let json = json1();
-        let root = into_rc(&json);
+        let root = json1();
         let mut stack = Stack::new(&root);
 
         assert_eq!(stack.get("name").unwrap(), "John Doe");
@@ -228,8 +210,7 @@ mod test {
 
     #[test]
     fn normal_backtrack() {
-        let json = json1();
-        let root = into_rc(&json);
+        let root = json1();
         let mut stack = Stack::new(&root);
 
         stack.push("phones");
@@ -244,8 +225,7 @@ mod test {
 
     #[test]
    fn dotted_from_top() {
-        let json = json1();
-        let root = into_rc(&json);
+        let root = json1();
         let mut stack = Stack::new(&root);
 
         assert!(stack.push("obj.part2"));
@@ -254,8 +234,7 @@ mod test {
 
     #[test]
    fn dotted_after_backtrack() {
-        let json = json1();
-        let root = into_rc(&json);
+        let root = json1();
         let mut stack = Stack::new(&root);
 
         stack.push("phones");
@@ -265,8 +244,7 @@ mod test {
 
     #[test]
     fn broken_chain() {
-        let json = json1();
-        let root = into_rc(&json);
+        let root = json1();
         let mut stack = Stack::new(&root);
 
         assert!(!stack.push("obj.part1.part2"));

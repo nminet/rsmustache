@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-use crate::{Context, into_rc};
+use crate::ContextRef;
 use crate::reader::{Reader, Token};
 use crate::context::Stack;
 
@@ -15,10 +15,8 @@ impl<'a> Template<'a> {
         Ok(Template { segments })
     }
 
-    pub fn render<'c, T>(&self, context: &'c T) -> String
-    where &'c T: Context<'c> {
-        let context = into_rc(context);
-        let mut stack = Stack::new(&context);
+    pub fn render(&self, context: ContextRef<'a>) -> String {
+        let mut stack = Stack::new(context);
         self.segments
             .iter()
             .map(|s| s.render(&mut stack))
