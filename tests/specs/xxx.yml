@@ -1,15 +1,10 @@
 overview:
 tests:
-  - name: Partial Inheritence
-    desc: Delimiters set in a parent template should not affect a partial.
-    data: { value: 'yes' }
-    partials:
-      include: '.{{value}}.'
-    template: |
-      [ {{>include}} ]
-      {{= | | =}}
-      [ |>include| ]
-    expected: |
-      [ .yes. ]
-      [ .yes. ]
+  - name: Dotted Names - Broken Chain Resolution
+    desc: Each part of a dotted name should resolve only against its parent.
+    data:
+      a: { b: { } }
+      c: { name: 'Jim' }
+    template: '"{{a.b.c.name}}" == ""'
+    expected: '"" == ""'
     

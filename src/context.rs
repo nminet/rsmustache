@@ -16,15 +16,15 @@ pub type ContextRef<'a> = &'a dyn Context<'a>;
 struct Frame<'a> {
     // VecDeque to avoid quadratic complexity when removing from start.
     contexts: VecDeque<ContextRef<'a>>,
-    resolve_down: bool
+    dotted: bool
 }
 
 impl<'a> Frame<'a> {
-    fn new(contexts: Vec<ContextRef<'a>>, resolve_down: bool) -> Self {
+    fn new(contexts: Vec<ContextRef<'a>>, dotted: bool) -> Self {
         let contexts = VecDeque::from(contexts);
         Frame {
             contexts,
-            resolve_down
+            dotted
         }
     }
 
@@ -75,14 +75,14 @@ impl<'a> Stack<'a> {
     fn push_dotted(&mut self, name: &str, dotted: bool) -> bool {
         if name == "." {
             if let Some(children) = self.children() {
-                self.frames.push(
-                    Frame::new(children, !dotted)
-                )
+                let frame = Frame::new(children, dotted);
+                self.frames.push(frame);
             };
             true
+
         } else if let Some(idx) = name.find(".") {
             let (head, tail) = name.split_at(idx);
-            self.push_dotted(head, true) && self.push(&tail[1..])
+            self.push_dotted(head, true) && self.push_dotted(&tail[1..], true)
 
         } else if let Some(context) = self.child(name) {
             let contexts = if let Some(children) = context.children() {
@@ -90,24 +90,29 @@ impl<'a> Stack<'a> {
             } else {
                 vec![context]
             };
-            let frame = Frame::new(contexts, !dotted);
+            let frame = Frame::new(contexts, dotted);
             self.frames.push(frame);
             true
         
+        } else if dotted && self.top().dotted {
+            // not backtracking between dotted names
+            false
+
+        } else if self.len() == 1 {
+            // nowhere to backtrack
+            false
+
         } else {
-            let mut resolved = false;
-            if self.top().resolve_down {
-                let mut ts = self.backtracking();
-                loop {
-                    resolved = ts.push(name);
-                    if resolved || !ts.top().resolve_down {
-                        break;
-                    }
-                    ts.down();
+            let mut resolved: bool;
+            let mut ts = self.backtracking();
+            loop {
+                resolved = ts.push(name);
+                if resolved || !ts.down() {
+                    break;
                 }
-                if resolved {
-                    self.merge(ts);
-                }
+            }
+            if resolved {
+                self.merge(ts);
             }
             resolved
         }
@@ -127,9 +132,13 @@ impl<'a> Stack<'a> {
     fn down(&mut self) -> bool {
         let len = self.frames.len();
         if len > 1 {
-            self.frames.truncate(len - 1);
+            let mut next_len = len - 1;
+            while self.frames.get(next_len - 1).unwrap().dotted {
+                next_len -= 1;
+            }
+            self.frames.truncate(next_len);
             if self.backtrack_depth > 0 {
-                self.backtrack_depth += 1;
+                self.backtrack_depth += len - next_len;
             }
             true
         } else {
@@ -221,26 +230,36 @@ mod test {
         assert!(!stack.next());
         assert!(stack.down());
         assert_eq!(stack.get("extension").unwrap(), "1234567");
-   }
+    }
 
     #[test]
-   fn dotted_from_top() {
+    fn dotted_from_top() {
         let root = json1();
         let mut stack = Stack::new(&root);
 
         assert!(stack.push("obj.part2"));
         assert_eq!(stack.value().unwrap(), "yyy");
-   }
+    }
 
     #[test]
-   fn dotted_after_backtrack() {
+    fn dotted_after_backtrack() {
         let root = json1();
         let mut stack = Stack::new(&root);
 
         stack.push("phones");
         assert!(stack.push("obj.part2"));
         assert_eq!(stack.value().unwrap(), "yyy");
-   }
+    }
+
+    #[test]
+    fn backtrack_after_dotted() {
+        let root = json1();
+        let mut stack = Stack::new(&root);
+
+        stack.push("phones");
+        assert!(stack.push("obj.part2"));
+        assert!(stack.push("age"));
+    }
 
     #[test]
     fn broken_chain() {
