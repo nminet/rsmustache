@@ -4,12 +4,12 @@ use crate::reader::{Reader, Token};
 use crate::context::Stack;
 
 
-pub struct Template<'a>{
-    segments: Segments<'a>
+pub struct Template {
+    segments: Segments
 }
 
-impl<'a> Template<'a> {
-    pub fn from(input: &'a str) -> Result<Self, String> {
+impl Template {
+    pub fn from(input: &str) -> Result<Self, String> {
         let mut reader = Reader::new(input);
         let segments = parse(&mut reader, None)?;
         Ok(Template { segments })
@@ -28,7 +28,7 @@ impl<'a> Template<'a> {
 
 fn parse<'a>(
     reader: &mut Reader<'a>, section: Option<&str>
-) -> Result<Segments<'a>, String> {
+) -> Result<Segments, String> {
     let mut segments = Segments::new();
     while let Some(token) = reader.pop_front() {
         match token {
@@ -76,47 +76,47 @@ trait Segment: Debug {
     fn render(&self, stack: &mut Stack) -> String;
 }
 
-type Segments<'a> = Vec<Box<dyn Segment + 'a>>;
+type Segments = Vec<Box<dyn Segment>>;
 
 
 #[derive(Debug)]
-struct TextSegment<'a> {
-    text: &'a str
+struct TextSegment {
+    text: String
 }
 
-impl<'a> TextSegment<'a> {
-    pub(crate) fn new(text: &'a str) -> Self {
+impl TextSegment {
+    pub(crate) fn new(text: &str) -> Self {
         TextSegment {
-            text
+            text: String::from(text)
         }
     }
 }
 
-impl<'a> Segment for TextSegment<'a> {
+impl Segment for TextSegment {
     fn render(&self, _stack: &mut Stack) -> String {
-        self.text.to_string()
+        self.text.clone()
     }
 }
 
 
 #[derive(Debug)]
-struct ValueSegment<'a> {
-    name: &'a str,
+struct ValueSegment {
+    name: String,
     is_escaped: bool
 }
 
-impl<'a> ValueSegment<'a> {
-    pub(crate) fn new(name: &'a str, is_escaped: bool) -> Self {
+impl ValueSegment {
+    pub(crate) fn new(name: &str, is_escaped: bool) -> Self {
         ValueSegment {
-            name,
+            name: String::from(name),
             is_escaped
         }
     }
 }
 
-impl<'a> Segment for ValueSegment<'a> {
+impl Segment for ValueSegment {
     fn render(&self, stack: &mut Stack) -> String {
-        let text = stack.get(self.name).unwrap_or_default();
+        let text = stack.get(&self.name).unwrap_or_default();
         match self.is_escaped {
             true => html_escape(text.to_string()),
             false => text.to_string()
@@ -126,25 +126,25 @@ impl<'a> Segment for ValueSegment<'a> {
 
 
 #[derive(Debug)]
-struct SectionSegment<'a> {
-    name: &'a str,
-    children: Segments<'a>
+struct SectionSegment {
+    name: String,
+    children: Segments
 }
 
-impl<'a> SectionSegment<'a> {
-    fn new(name: &'a str, children: Segments<'a>) -> Self {
+impl SectionSegment {
+    fn new(name: &str, children: Segments) -> Self {
         SectionSegment {
-            name,
+            name: String::from(name),
             children
         }
     }
 }
 
-impl<'a> Segment for SectionSegment<'a> {
+impl<'a> Segment for SectionSegment {
     fn render(&self, stack: &mut Stack) -> String {
         let mut result = String::new();
         let len = stack.len();
-        if stack.push(self.name) && stack.is_truthy() {
+        if stack.push(&self.name) && stack.is_truthy() {
             while stack.current().is_some() {
                 result.push_str( &self.children.render(stack));
                 stack.next();
@@ -155,7 +155,7 @@ impl<'a> Segment for SectionSegment<'a> {
     }
 }
 
-impl<'a> Segment for Segments<'a> {
+impl Segment for Segments {
     fn render(&self, stack: &mut Stack) -> String {
         self.iter()
             .map(|child| child.render(stack))
@@ -165,24 +165,24 @@ impl<'a> Segment for Segments<'a> {
 }
 
 #[derive(Debug)]
-struct InvertedSectionSegment<'a> {
-    name: &'a str,
-    children: Segments<'a>
+struct InvertedSectionSegment {
+    name: String,
+    children: Segments
 }
 
-impl<'a> InvertedSectionSegment<'a> {
-    fn new(name: &'a str, children: Segments<'a>) -> Self {
+impl InvertedSectionSegment {
+    fn new(name: &str, children: Segments) -> Self {
         InvertedSectionSegment {
-            name,
+            name: String::from(name),
             children
         }
     }
 }
 
-impl<'a> Segment for InvertedSectionSegment<'a> {
+impl Segment for InvertedSectionSegment {
     fn render(&self, stack: &mut Stack)-> String {
         let len = stack.len();
-        let pushed = stack.push(self.name);
+        let pushed = stack.push(&self.name);
         let falsy = !pushed || !stack.is_truthy();
         stack.truncate(len);
         if falsy {
