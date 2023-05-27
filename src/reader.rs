@@ -6,8 +6,7 @@ pub(crate) struct Reader<'a> {
     open_delimiter: &'a str,
     close_delimiter: &'a str,
     pos: usize,
-    after_standalone: usize,
-    before_close: usize
+    after_standalone: usize
 }
 
 impl<'a> Reader<'a> {
@@ -26,7 +25,6 @@ impl<'a> Reader<'a> {
             close_delimiter,
             pos,
             after_standalone,
-            before_close: 0
         }
     }
 
@@ -53,9 +51,6 @@ impl<'a> Reader<'a> {
 
     fn read_tag(&mut self, tail: &'a str) -> Token<'a> {
         if let Some((text, after_tag)) = tail.span_tag(&self.open_delimiter, &self.close_delimiter) {
-            if text.starts_with("/") {
-                self.before_close = self.pos;
-            }
             self.pos += after_tag;
             if self.pos < self.after_standalone {
                 self.pos = match self.input[self.pos..self.after_standalone].find(self.open_delimiter) {

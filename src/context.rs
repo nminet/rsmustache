@@ -95,7 +95,7 @@ impl<'a> Stack<'a> {
             true
         
         } else if dotted && self.top().dotted {
-            // not backtracking between dotted names
+            // no backtracking while processing dotted name
             false
 
         } else if self.len() == 1 {
