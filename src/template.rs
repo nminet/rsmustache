@@ -15,7 +15,7 @@ impl<'a> Template<'a> {
         Ok(Template { segments })
     }
 
-    pub fn render(&self, context: ContextRef<'a>) -> String {
+    pub fn render(&self, context: ContextRef) -> String {
         let mut stack = Stack::new(context);
         self.segments
             .iter()
@@ -26,8 +26,8 @@ impl<'a> Template<'a> {
 }
 
 
-fn parse<'a, 's: 'a>(
-    reader: &mut Reader<'a>, section: Option<&'s str>
+fn parse<'a>(
+    reader: &mut Reader<'a>, section: Option<&str>
 ) -> Result<Segments<'a>, String> {
     let mut segments = Segments::new();
     while let Some(token) = reader.pop_front() {
@@ -93,7 +93,7 @@ impl<'a> TextSegment<'a> {
 }
 
 impl<'a> Segment for TextSegment<'a> {
-    fn render<'s>(&self, _stack: &mut Stack) -> String {
+    fn render(&self, _stack: &mut Stack) -> String {
         self.text.to_string()
     }
 }
