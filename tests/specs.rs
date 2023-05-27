@@ -98,7 +98,7 @@ fn yaml_spec(name: &str) -> Result<YamlSpecFile, String> {
 }
 
 fn run_spec_test(test: &YamlTestSpec, log: bool) -> Result<(), String> {
-    let template = Template::from(&test.template).unwrap();
+    let template = Template::from(&test.template)?;
     let result = template.render(&test.data);
     if result != test.expected {
         if log {
@@ -106,7 +106,7 @@ fn run_spec_test(test: &YamlTestSpec, log: bool) -> Result<(), String> {
             println!("expected:\n{}", test.expected);
             println!("received:\n{}\n", result);
         };
-        Err(test.name.clone())
+        Err(test.name.to_owned())
     } else {
         if log {
             println!("{}: ok", test.name);

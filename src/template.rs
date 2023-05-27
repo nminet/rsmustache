@@ -83,7 +83,7 @@ struct TextSegment {
 impl TextSegment {
     pub(crate) fn new(text: &str) -> Self {
         TextSegment {
-            text: String::from(text)
+            text: text.to_owned()
         }
     }
 }
@@ -104,7 +104,7 @@ struct ValueSegment {
 impl ValueSegment {
     pub(crate) fn new(name: &str, is_escaped: bool) -> Self {
         ValueSegment {
-            name: String::from(name),
+            name: name.to_owned(),
             is_escaped
         }
     }
@@ -114,8 +114,8 @@ impl Segment for ValueSegment {
     fn render(&self, stack: &mut Stack) -> String {
         let text = stack.get(&self.name).unwrap_or_default();
         match self.is_escaped {
-            true => html_escape(text.to_string()),
-            false => text.to_string()
+            true => html_escape(text),
+            false => text
         }
     }
 }
@@ -130,7 +130,7 @@ struct SectionSegment {
 impl SectionSegment {
     fn new(name: &str, children: Segments) -> Self {
         SectionSegment {
-            name: String::from(name),
+            name: name.to_owned(),
             children
         }
     }
@@ -169,7 +169,7 @@ struct InvertedSectionSegment {
 impl InvertedSectionSegment {
     fn new(name: &str, children: Segments) -> Self {
         InvertedSectionSegment {
-            name: String::from(name),
+            name: name.to_owned(),
             children
         }
     }
