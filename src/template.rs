@@ -17,11 +17,7 @@ impl Template {
 
     pub fn render(&self, context: ContextRef) -> String {
         let mut stack = Stack::new(context);
-        self.segments
-            .iter()
-            .map(|s| s.render(&mut stack))
-            .collect::<Vec<_>>()
-            .concat()
+        self.segments.render(&mut stack)
     }
 }
 
@@ -146,7 +142,7 @@ impl<'a> Segment for SectionSegment {
         let len = stack.len();
         if stack.push(&self.name) && stack.is_truthy() {
             while stack.current().is_some() {
-                result.push_str( &self.children.render(stack));
+                result.push_str(&self.children.render(stack));
                 stack.next();
             }
         };
