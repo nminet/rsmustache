@@ -1,8 +1,9 @@
 extern crate mustache;
-use mustache::{Template, YamlValue};
+use mustache::{Template, TemplateMap, YamlValue};
 
 use std::fs;
 use serde::Deserialize;
+use serde_yaml::Mapping as YamlMapping;
 
 #[test]
 fn spec_tests() -> Result<(), String> {
@@ -11,7 +12,9 @@ fn spec_tests() -> Result<(), String> {
         "interpolation",
         "sections",
         "inverted",
-        "delimiters"
+        "delimiters",
+        "partials",
+        "~dynamic-names"
     ].iter().map(
         |name| run_spec_file(name, false)
     ).fold(
@@ -50,13 +53,18 @@ fn inverted_test() -> Result<(), String> {
 }
 
 #[test]
+fn delimiters_test() -> Result<(), String> {
+    run_spec_file("delimiters", true)
+}
+
+#[test]
 fn partials_test() -> Result<(), String> {
     run_spec_file("partials", true)
 }
 
 #[test]
-fn delimiters_test() -> Result<(), String> {
-    run_spec_file("delimiters", true)
+fn dynamic_names_test() -> Result<(), String> {
+    run_spec_file("~dynamic-names", true)
 }
 
 
@@ -84,6 +92,7 @@ struct YamlTestSpec {
     name: String,
     data: YamlValue,
     template: String,
+    partials: Option<YamlMapping>,
     expected: String,
 }
 
@@ -99,7 +108,17 @@ fn yaml_spec(name: &str) -> Result<YamlSpecFile, String> {
 
 fn run_spec_test(test: &YamlTestSpec, log: bool) -> Result<(), String> {
     let template = Template::from(&test.template)?;
-    let result = template.render(&test.data);
+    let mut partials = TemplateMap::new();
+    if let Some(values) = &test.partials {
+        for (name, text) in values {
+            let name = name.as_str().unwrap();
+            let input = text.as_str().unwrap();
+            partials.load(name, input)?;
+        }
+    };
+    let result = template.render_with_partials(
+        &test.data, &partials
+    );
     if result != test.expected {
         if log {
             println!("{}: fail", test.name);

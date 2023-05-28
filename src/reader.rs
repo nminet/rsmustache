@@ -43,14 +43,26 @@ impl<'a> Reader<'a> {
     }
 
     fn read_text(&mut self, tail: &'a str) -> Token<'a> {
+        let starts_new_line = self.pos == 0 || &self.input[self.pos - 1.. self.pos] == "\n";
         let (text, after_text, after_standalone) = tail.span_text(&self.open_delimiter, &self.close_delimiter);
         self.after_standalone = self.pos + after_standalone;
         self.pos += after_text;
-        Token::text(&text)
+        Token::text(&text, starts_new_line)
     }
 
     fn read_tag(&mut self, tail: &'a str) -> Token<'a> {
         if let Some((text, after_tag)) = tail.span_tag(&self.open_delimiter, &self.close_delimiter) {
+            let start_of_line = if let Some(p) = self.input[..self.pos].rfind('\n') {
+                p + 1
+            } else {
+                0
+            };
+            let starts_new_line = start_of_line == self.pos;
+            let indent = if self.input.is_indent(start_of_line, self.pos) {
+                &self.input[start_of_line..self.pos]
+            } else {
+                ""
+            };
             self.pos += after_tag;
             if self.pos < self.after_standalone {
                 self.pos = match self.input[self.pos..self.after_standalone].find(self.open_delimiter) {
@@ -58,7 +70,7 @@ impl<'a> Reader<'a> {
                     _ => self.after_standalone
                 }
             }
-            Token::tag(text)
+            Token::tag(text, indent, starts_new_line)
         } else {
             self.pos = self.input.len();
             Token::error("missing close delimiter")
@@ -76,31 +88,33 @@ impl<'a> Reader<'a> {
 
  #[derive(PartialEq, Debug)]
 pub(crate) enum Token<'a> {
-    Text(&'a str),
+    Text(&'a str, bool),
+    Value(&'a str, bool, bool),
     Section(&'a str),
     InvertedSection(&'a str),
     EndSection(&'a str),
-    Value(&'a str, bool),
+    Partial(&'a str, bool, &'a str),
     Comment(&'a str),
     Delimiters(&'a str, &'a str),
     Error(String)
 }
 
 impl<'a> Token<'a> {
-    fn text(text: &str) -> Token {
-        Token::Text(text)
+    fn text(text: &str, starts_new_line: bool) -> Token {
+        Token::Text(text, starts_new_line)
     }
     
-    fn tag(text: &str) -> Token {
+    fn tag(text: &'a str, indent: &'a str, starts_new_line: bool) -> Token<'a> {
         if let Some(s) = text.chars().nth(0) {
             match s {
                 '#' => Token::section(text.trim_sigil()),
-                '^' => Token::inverted_section(text.trim_sigil()),           
-                '/' => Token::end_section(text.trim_sigil()),           
+                '^' => Token::inverted_section(text.trim_sigil()),
+                '/' => Token::end_section(text.trim_sigil()),
+                '>' => Token::partial(text.trim_sigil(), indent),
                 '=' => Token::delimiters(text.trim_sigil()),
                 '!' => Token::Comment(text.trim_sigil()),
-                '&' | '{' => Token::value(text.trim_sigil(), false),
-                _ => Token::value(text, true)
+                '&' | '{' => Token::value(text.trim_sigil(), false, starts_new_line),
+                _ => Token::value(text, true, starts_new_line)
             }
         } else {
             Token::error("empty open-close pair")
@@ -119,6 +133,18 @@ impl<'a> Token<'a> {
         Token::tag_with_label(Token::EndSection, text)
     }
 
+    fn partial(text: &'a str, indent: &'a str) -> Token<'a> {
+        let is_dynamic = text.starts_with("*");
+        let text = if is_dynamic {
+            text[1..].trim_start()
+        } else {
+            text
+        };
+        Token::tag_with_label(
+            |t| Token::Partial(t, is_dynamic, indent), text
+        )
+    }
+
     fn delimiters(text: &str) -> Token {
         let words: Vec<&str> = text.split(" ").filter(|s| !s.is_empty()).collect();
         if words.len() == 2 && words[0].find('=') == None && words[1].find('=') == None {
@@ -128,8 +154,10 @@ impl<'a> Token<'a> {
         }
     }
 
-    fn value(text: &str, escaped: bool) -> Token {
-        Token::tag_with_label(|t| Token::Value(t, escaped), text)
+    fn value(text: &str, escaped: bool, starts_new_line: bool) -> Token {
+        Token::tag_with_label(
+            |t| Token::Value(t, escaped, starts_new_line), text
+        )
     }
 
     fn error(text: &str) -> Token {
@@ -154,6 +182,7 @@ trait ReaderStringOps {
     fn is_standalone_open(&self, open_delimiter: &str) -> bool;
     fn trim_sigil(&self) -> &str;
     fn is_blank(&self, start: usize, len: usize) -> bool;
+    fn is_indent(&self, start: usize, len: usize) -> bool;
 }
 
 impl ReaderStringOps for str {
@@ -275,8 +304,13 @@ impl ReaderStringOps for str {
             |c| c.is_ascii_whitespace()
         )
     }
-}
 
+    fn is_indent(&self, start: usize, after: usize) -> bool {
+        after == start || self[start..after].chars().all(
+            |c| c == ' ' || c == '\t'
+        )
+    }
+}
 
 
 #[cfg(test)]

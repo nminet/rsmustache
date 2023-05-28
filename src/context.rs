@@ -171,10 +171,13 @@ impl<'a> Stack<'a> {
             self.value()
         } else {
             let len = self.len();
-            self.push(name);
-            let result = self.value();
-            self.truncate(len);
-            result
+            if self.push(name) {
+                let result = self.value();
+                self.truncate(len);
+                result
+            } else {
+                None
+            }
         }
     }
 
