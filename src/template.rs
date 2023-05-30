@@ -70,7 +70,7 @@ fn parse<'a>(
                         parse(reader, Some(name))?
                     )
                 ),
-            Token::BlockSection(name) =>
+            Token::Block(name) =>
                 segments.push(
                     Segment::Block(
                         name.to_owned(),
@@ -85,7 +85,7 @@ fn parse<'a>(
                             Segment::Block(name, children) => Some((name, children)),
                             _ => None
                         }
-                    ).collect::<Vec<_>>();
+                    ).collect::<HashMap<_, _>>();
                 segments.push(
                     Segment::Partial(
                         name.to_owned(),
@@ -131,7 +131,7 @@ enum Segment {
     Section(String, Segments),
     InvertedSection(String, Segments),
     Block(String, Segments),
-    Partial(String, String, bool, Option<Vec<(String, Segments)>>)
+    Partial(String, String, bool, Option<HashMap<String, Segments>>)
 }
 
 type Segments = Vec<Segment>;
@@ -143,17 +143,35 @@ fn render_segment(
 ) -> String {
     match segment {
         Segment::Text(text, starts_new_line) =>
-            render_text(text, *starts_new_line, indent),
+            render_text(
+                text, *starts_new_line,
+                indent
+            ),
         Segment::Value(name, is_escaped, starts_new_line) =>
-            render_value(name, *is_escaped, *starts_new_line, stack, indent),
+            render_value(
+                name, *is_escaped, *starts_new_line,
+                stack, indent
+            ),
         Segment::Section(name, children) =>
-            render_section(name, children, stack, indent, partials),
+            render_section(
+                name, children,
+                stack, indent, partials
+            ),
         Segment::InvertedSection(name, children) =>
-            render_inverted_section(name, children, stack, indent, partials),
-        Segment::Block(_, children) =>
-            render_segments(children, stack, indent, partials),
+            render_inverted_section(
+                name, children,
+                stack, indent, partials
+            ),
+        Segment::Block(_, segments) =>
+            render_segments(
+                segments,
+                stack, indent, partials
+            ),
         Segment::Partial(name, children_indent, is_dynamic, parameters) =>
-            render_partial(name, children_indent, *is_dynamic, parameters, stack, indent, partials)
+            render_partial(
+                name, children_indent, *is_dynamic, parameters,
+                stack, indent, partials
+            )
     }
 }
 
@@ -235,7 +253,7 @@ fn render_inverted_section(
 }
 
 fn render_partial(
-    name: &str, children_indent: &str, is_dynamic: bool, parameters: &Option<Vec<(String, Segments)>>,
+    name: &str, children_indent: &str, is_dynamic: bool, parameters: &Option<HashMap<String, Segments>>,
     stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
 ) -> String {
     if let Some(store) = partials {
@@ -254,10 +272,10 @@ fn render_partial(
                     render_segments(&template.segments, stack, &next_indent, partials)
                 }  
             },
-            None => String::new()
+            None => "".to_owned()
         }
     } else {
-        String::new()
+        "".to_owned()
     }
 }
 
@@ -266,13 +284,13 @@ fn render_segments(
     stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
 ) -> String {
     segments.iter()
-        .map(|child| render_segment(child, stack, indent, partials))
+        .map(|segment| render_segment(segment, stack, indent, partials))
         .collect::<Vec<_>>()
         .concat()
 }
 
 
-fn substitute(segments: &Segments, parameters: &Vec<(String, Segments)>) -> Segments {
+fn substitute(segments: &Segments, parameters: &HashMap<String, Segments>) -> Segments {
     let mut result = Vec::new();
     for segment in segments {
         match segment {
@@ -292,32 +310,25 @@ fn substitute(segments: &Segments, parameters: &Vec<(String, Segments)>) -> Segm
                 )
             },
             Segment::Block(name, segments) => {
-                let updated = match parameters.iter().find(
-                    |(pname, _)| pname == name,
-                ) {
-                    Some((_, segments)) => segments.clone(),
-                    None => substitute(segments, parameters)
-                };
+                let updated = parameters.get(name).map_or_else(
+                    || substitute(segments, parameters),
+                    |segments| segments.clone() 
+                );
                 result.push(
                     Segment::Block(name.to_owned(), updated)
                 );
             },
             Segment::Partial(name, indent, is_dynamic, partial_parameters) => {
                 let updated = if let Some(partial_parameters) = partial_parameters {
-                    let names = parameters.iter()
-                        .map(|(name, _)| name)
-                        .collect::<Vec<_>>();
-                    let mut updated = Vec::from(&partial_parameters[..]);
-                    updated.retain(
-                        |(name, _)| !names.iter().any(|xname| name == *xname)
-                    );
-                    updated.extend_from_slice(&parameters[..]);
-                    updated
+                    let mut updated = HashMap::new();
+                    updated.extend(partial_parameters.clone().into_iter());
+                    updated.extend(parameters.clone().into_iter());
+                    Some(updated)
                 } else {
-                    parameters.clone()
+                    None
                 };
                 result.push(
-                    Segment::Partial(name.to_owned(), indent.to_owned(), *is_dynamic, Some(updated))
+                    Segment::Partial(name.to_owned(), indent.to_owned(), *is_dynamic, updated)
                 )
             }
         }

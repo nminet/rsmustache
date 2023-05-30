@@ -92,7 +92,7 @@ pub(crate) enum Token<'a> {
     Value(&'a str, bool, bool),
     Section(&'a str),
     InvertedSection(&'a str),
-    BlockSection(&'a str),
+    Block(&'a str),
     EndSection(&'a str),
     Partial(&'a str, bool, &'a str),
     Parent(&'a str, bool, &'a str),
@@ -111,7 +111,7 @@ impl<'a> Token<'a> {
             match s {
                 '#' => Token::section(text.trim_sigil()),
                 '^' => Token::inverted_section(text.trim_sigil()),
-                '$' => Token::block_section(text.trim_sigil()),
+                '$' => Token::block(text.trim_sigil()),
                 '<' => Token::parent(text.trim_sigil(), indent),
                 '/' => Token::end_section(text.trim_sigil()),
                 '>' => Token::partial(text.trim_sigil(), indent),
@@ -133,8 +133,8 @@ impl<'a> Token<'a> {
         Token::tag_with_label(Token::InvertedSection, text)
     }
 
-    fn block_section(text: &str) -> Token {
-        Token::tag_with_label(Token::BlockSection, text)
+    fn block(text: &str) -> Token {
+        Token::tag_with_label(Token::Block, text)
     }
 
     fn end_section(text: &str) -> Token {
