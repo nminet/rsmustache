@@ -29,11 +29,6 @@ fn spec_tests() -> Result<(), String> {
 }
 
 #[test]
-fn xxx_test() -> Result<(), String> {
-    run_spec_file("xxx", true)
-}
-
-#[test]
 fn comments_test() -> Result<(), String> {
     run_spec_file("comments", true)
 }

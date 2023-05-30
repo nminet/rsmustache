@@ -342,7 +342,7 @@ mod tests {
         expect_sequence(
             " 123456 ",
             vec![
-                Token::text(" 123456 ")
+                Token::text(" 123456 ", true)
             ]
         );
     }
@@ -352,9 +352,9 @@ mod tests {
         expect_sequence(
             "x\n   {{/a}}  \ny",
             vec![
-                Token::Text("x\n"),
+                Token::Text("x\n", true),
                 Token::EndSection("a"),
-                Token::Text("y")
+                Token::Text("y", true)
             ]
         )
     }
@@ -364,12 +364,12 @@ mod tests {
         expect_sequence(
             "x\n   {{ # a }}{{^x}}{{/x}}{{ / a }}  \ny",
             vec![
-                Token::Text("x\n"),
+                Token::Text("x\n", true),
                 Token::Section("a"),
                 Token::InvertedSection("x"),
                 Token::EndSection("x"),
                 Token::EndSection("a"),
-                Token::Text("y")
+                Token::Text("y", true)
             ]
         )
     }
@@ -379,13 +379,13 @@ mod tests {
         expect_sequence(
             "x\n   {{ #a }}{{^b }}{{{x}}}{{ /b}}{{/a}}  \ny",
             vec![
-                Token::Text("x\n   "),
+                Token::Text("x\n   ", true),
                 Token::Section("a"),
                 Token::InvertedSection("b"),
-                Token::Value("x", false),
+                Token::Value("x", false, false),
                 Token::EndSection("b"),
                 Token::EndSection("a"),
-                Token::Text("  \ny")
+                Token::Text("  \ny", false)
             ]
         )
     }
@@ -455,7 +455,7 @@ mod tests {
         expect_sequence(
             "{{ v }}",
             vec![
-                Token::Value("v", true)
+                Token::Value("v", true, true)
             ]
         )
     }
@@ -465,7 +465,7 @@ mod tests {
         expect_sequence(
             "{{{ v }}}",
             vec![
-                Token::Value("v", false)
+                Token::Value("v", false, true)
             ]
         )
     }
@@ -479,7 +479,7 @@ mod tests {
                 Token::Section("a"),
                 Token::Section("b"),
                 Token::Section("c"),
-                Token::Text("\n")
+                Token::Text("\n", true)
             ]
         )
     }
