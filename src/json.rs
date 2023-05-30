@@ -33,7 +33,7 @@ impl<'a> Context<'a> for JsonValue {
 
     fn is_truthy(&self) -> bool {
         match self {
-            JsonValue::Null => true,
+            JsonValue::Null => false,
             JsonValue::Bool(b) => *b,
             JsonValue::Array(seq) => !seq.is_empty(),
             _ => true
