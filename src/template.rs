@@ -31,7 +31,7 @@ impl Template {
     pub(crate) fn render_internal(
         &self, stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>,
     ) -> String {
-        self.segments.render(stack, indent, partials)
+        render_segments(&self.segments, stack, indent, partials)
     }
 }
 
@@ -42,25 +42,58 @@ fn parse<'a>(
     let mut segments = Segments::new();
     while let Some(token) = reader.pop_front() {
         match token {
-            Token::Text(text, starts_new_line) => {
-                segments.push(Box::new(
-                    TextSegment::new(text, starts_new_line)
-                ))
-            },
-            Token::Value(name, is_escaped, starts_new_line) => {
-                segments.push(Box::new(
-                    ValueSegment::new(name, is_escaped, starts_new_line)
-                ))
-            },
-            Token::Section(name) => {
-                segments.push(Box::new(
-                    SectionSegment::new(name, parse(reader, Some(name))?)
-                ))
-            },
-            Token::InvertedSection(name) => {
-                segments.push(Box::new(
-                    InvertedSectionSegment::new(name, parse(reader, Some(name))?)
-                ))
+            Token::Text(text, starts_new_line) =>
+                segments.push(
+                    Segment::Text(
+                        text.to_owned(),
+                        starts_new_line
+                    )
+                ),
+            Token::Value(name, is_escaped, starts_new_line) =>
+                segments.push(
+                    Segment::Value(
+                        name.to_owned(),
+                        is_escaped, starts_new_line
+                    )
+                ),
+            Token::Section(name) =>
+                segments.push(
+                    Segment::Section(
+                        name.to_owned(),
+                        parse(reader, Some(name))?
+                    )
+                ),
+            Token::InvertedSection(name) =>
+                segments.push(
+                    Segment::InvertedSection(
+                        name.to_owned(),
+                        parse(reader, Some(name))?
+                    )
+                ),
+            Token::BlockSection(name) =>
+                segments.push(
+                    Segment::Block(
+                        name.to_owned(),
+                        parse(reader, Some(name))?
+                    )
+                ),
+            Token::Parent(name, is_dynamic, indent) => {
+                let parameters = parse(reader, Some(name))?
+                    .into_iter()
+                    .filter_map(|s|
+                        match s {
+                            Segment::Block(name, children) => Some((name, children)),
+                            _ => None
+                        }
+                    ).collect::<Vec<_>>();
+                segments.push(
+                    Segment::Partial(
+                        name.to_owned(),
+                        indent.to_owned(),
+                        is_dynamic,
+                        Some(parameters)
+                    )
+                )
             },
             Token::EndSection(name) => {
                 if section != Some(name) {
@@ -68,11 +101,15 @@ fn parse<'a>(
                 }
                 break;
             },
-            Token::Partial(name, is_dynamic, indent) => {
-                segments.push(Box::new(
-                    PartialSegment::new(name, is_dynamic, indent)
-                ))
-            },
+            Token::Partial(name, is_dynamic, indent) =>
+                segments.push(
+                    Segment::Partial(
+                        name.to_owned(),
+                        indent.to_owned(),
+                        is_dynamic,
+                        None
+                    )
+                ),
             Token::Delimiters(od, cd) => {
                 reader.set_delimiters(od, cd);
             },
@@ -87,209 +124,205 @@ fn parse<'a>(
 }
 
 
-trait Segment: Debug {
-    fn render(
-        &self,stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
-    ) -> String;
+#[derive(Debug, Clone)]
+enum Segment {
+    Text(String, bool),
+    Value(String, bool, bool),
+    Section(String, Segments),
+    InvertedSection(String, Segments),
+    Block(String, Segments),
+    Partial(String, String, bool, Option<Vec<(String, Segments)>>)
 }
 
-type Segments = Vec<Box<dyn Segment>>;
+type Segments = Vec<Segment>;
 
 
-#[derive(Debug)]
-struct TextSegment {
-    text: String,
-    starts_new_line: bool
-}
-
-impl TextSegment {
-    pub(crate) fn new(text: &str, starts_new_line: bool) -> Self {
-        TextSegment {
-            text: text.to_owned(),
-            starts_new_line
-        }
+fn render_segment(
+    segment: &Segment,
+    stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
+) -> String {
+    match segment {
+        Segment::Text(text, starts_new_line) =>
+            render_text(text, *starts_new_line, indent),
+        Segment::Value(name, is_escaped, starts_new_line) =>
+            render_value(name, *is_escaped, *starts_new_line, stack, indent),
+        Segment::Section(name, children) =>
+            render_section(name, children, stack, indent, partials),
+        Segment::InvertedSection(name, children) =>
+            render_inverted_section(name, children, stack, indent, partials),
+        Segment::Block(_, children) =>
+            render_segments(children, stack, indent, partials),
+        Segment::Partial(name, children_indent, is_dynamic, parameters) =>
+            render_partial(name, children_indent, *is_dynamic, parameters, stack, indent, partials)
     }
 }
 
-impl Segment for TextSegment {
-    fn render(
-        &self, _stack: &mut Stack, indent: &str, _partials: Option<&dyn TemplateStore>
-    ) -> String {
-        if indent.is_empty() {
-            self.text.clone()
-        } else {
-            let mut result = String::new();
-            if self.starts_new_line {
-                result.push_str(indent);
-            }
-            result.push_str(&self.text);
-            if let Some(idx) = self.text.find('\n') {
-                if idx < self.text.len() - 1 {
-                    // eol inside text requires indenting next line
-                    let indent_after = "\n".to_owned() + indent;
-                    result = result.replace("\n", &indent_after);
-                    if self.text.ends_with("\n") {
-                        // trailing eol should not indent next line
-                        result.truncate(result.len() - indent.len());
-                    }
+fn render_text(
+    text: &str, starts_new_line: bool,
+    indent: &str
+) -> String {
+    if indent.is_empty() {
+        text.to_owned()
+    } else {
+        let mut result = String::new();
+        if starts_new_line {
+            result.push_str(indent);
+        }
+        result.push_str(text);
+        if let Some(idx) = text.find('\n') {
+            if idx < text.len() - 1 {
+                // eol inside text requires indenting next line
+                let indent_after = "\n".to_owned() + indent;
+                result = result.replace("\n", &indent_after);
+                if text.ends_with("\n") {
+                    // trailing eol should not indent next line
+                    result.truncate(result.len() - indent.len());
                 }
             }
-            result
         }
-    }
-}
-
-
-#[derive(Debug)]
-struct ValueSegment {
-    name: String,
-    is_escaped: bool,
-    starts_new_line: bool
-}
-
-impl ValueSegment {
-    pub(crate) fn new(name: &str, is_escaped: bool, starts_new_line: bool) -> Self {
-        ValueSegment {
-            name: name.to_owned(),
-            is_escaped,
-            starts_new_line
-        }
-    }
-}
-
-impl Segment for ValueSegment {
-    fn render(
-        &self, stack: &mut Stack, indent: &str, _partials: Option<&dyn TemplateStore>
-    ) -> String {
-        let value = if self.starts_new_line && !indent.is_empty() {
-            let mut value = indent.to_owned();
-            if let Some(text) = stack.get(&self.name) {
-                value.push_str(&text);
-            }
-            value
-        } else {
-            stack.get(&self.name).unwrap_or_default()
-        };
-        match self.is_escaped {
-            true => html_escape(value),
-            false => value
-        }
-    }
-}
-
-
-#[derive(Debug)]
-struct SectionSegment {
-    name: String,
-    children: Segments
-}
-
-impl SectionSegment {
-    fn new(name: &str, children: Segments) -> Self {
-        SectionSegment {
-            name: name.to_owned(),
-            children
-        }
-    }
-}
-
-impl<'a> Segment for SectionSegment {
-    fn render(
-        &self, stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
-    ) -> String {
-        let mut result = String::new();
-        let len = stack.len();
-        if stack.push(&self.name) && stack.is_truthy() {
-            while stack.current().is_some() {
-                result.push_str(&self.children.render(stack, indent, partials));
-                stack.next();
-            }
-        };
-        stack.truncate(len);
         result
     }
 }
 
-impl Segment for Segments {
-    fn render(
-        &self, stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
-    ) -> String {
-        self.iter()
-            .map(|child| child.render(stack, indent, partials))
-            .collect::<Vec<_>>()
-            .concat()
-    }
-}
-
-#[derive(Debug)]
-struct InvertedSectionSegment {
-    name: String,
-    children: Segments
-}
-
-impl InvertedSectionSegment {
-    fn new(name: &str, children: Segments) -> Self {
-        InvertedSectionSegment {
-            name: name.to_owned(),
-            children
+fn render_value(
+    name: &str, is_escaped: bool, starts_new_line: bool,
+    stack: &mut Stack, indent: &str
+) -> String {
+    let value = if starts_new_line && !indent.is_empty() {
+        let mut value = indent.to_owned();
+        if let Some(text) = stack.get(name) {
+            value.push_str(&text);
         }
+        value
+    } else {
+        stack.get(name).unwrap_or_default()
+    };
+    match is_escaped {
+        true => html_escape(value),
+        false => value
     }
 }
 
-impl Segment for InvertedSectionSegment {
-    fn render(
-        &self, stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
-    )-> String {
-        let len = stack.len();
-        let pushed = stack.push(&self.name);
-        let falsy = !pushed || !stack.is_truthy();
-        stack.truncate(len);
-        if falsy {
-            self.children.render(stack, indent, partials)
+fn render_section(
+    name: &str, children: &Segments,
+    stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
+) -> String {
+    let mut result = String::new();
+    let len = stack.len();
+    if stack.push(name) && stack.is_truthy() {
+        while stack.current().is_some() {
+            result.push_str(&render_segments(children, stack, indent, partials));
+            stack.next();
+        }
+    };
+    stack.truncate(len);
+    result
+}
+
+fn render_inverted_section(
+    name: &str, children: &Segments,
+    stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
+) -> String {
+    let len = stack.len();
+    let pushed = stack.push(name);
+    let falsy = !pushed || !stack.is_truthy();
+    stack.truncate(len);
+    if falsy {
+        render_segments(children, stack, indent, partials)
+    } else {
+        "".to_owned()
+    }    
+}
+
+fn render_partial(
+    name: &str, children_indent: &str, is_dynamic: bool, parameters: &Option<Vec<(String, Segments)>>,
+    stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
+) -> String {
+    if let Some(store) = partials {
+        let maybe_template = if is_dynamic {
+            stack.get(name).map_or(None, |it| store.get(&it))
         } else {
-            String::new()
+            store.get(name)
+        };
+        match maybe_template {
+            Some(template) => {
+                let next_indent = indent.to_owned() + children_indent;
+                if let Some(parameters) = parameters {
+                    let segments = substitute(&template.segments, parameters);
+                    render_segments(&segments, stack, &next_indent, partials)
+                } else {
+                    render_segments(&template.segments, stack, &next_indent, partials)
+                }  
+            },
+            None => String::new()
         }
+    } else {
+        String::new()
     }
 }
 
-#[derive(Debug)]
-struct PartialSegment {
-    name: String,
-    is_dynamic: bool,
-    indent: String
+fn render_segments(
+    segments: &Segments,
+    stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
+) -> String {
+    segments.iter()
+        .map(|child| render_segment(child, stack, indent, partials))
+        .collect::<Vec<_>>()
+        .concat()
 }
 
-impl PartialSegment {
-    fn new(name: &str, is_dynamic: bool, indent: &str) -> Self {
-        PartialSegment {
-            name: name.to_owned(),
-            is_dynamic,
-            indent: indent.to_owned()
-        }
-    }
-}
 
-impl Segment for PartialSegment {
-    fn render(
-        &self, stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
-    ) -> String {
-        if let Some(store) = partials {
-            let maybe_template = if self.is_dynamic {
-                stack.get(&self.name).map_or(None, |it| store.get(&it))
-            } else {
-                store.get(&self.name)
-            };
-            match maybe_template {
-                Some(template) => {
-                    let next_indent = self.indent.to_owned() + indent;
-                    template.render_internal(stack, &next_indent, partials)
-                },
-                None => String::new()
+fn substitute(segments: &Segments, parameters: &Vec<(String, Segments)>) -> Segments {
+    let mut result = Vec::new();
+    for segment in segments {
+        match segment {
+            Segment::Text(_, _) | Segment::Value(_, _, _) => {
+                result.push(
+                    segment.clone()
+                )
+            },
+            Segment::Section(name, segments) => {
+                result.push(
+                    Segment::Section(name.to_owned(), substitute(segments, parameters))
+                )
+            },
+            Segment::InvertedSection(name, segments) => {
+                result.push(
+                    Segment::InvertedSection(name.to_owned(), substitute(segments, parameters))
+                )
+            },
+            Segment::Block(name, segments) => {
+                let updated = match parameters.iter().find(
+                    |(pname, _)| pname == name,
+                ) {
+                    Some((_, segments)) => segments.clone(),
+                    None => substitute(segments, parameters)
+                };
+                result.push(
+                    Segment::Block(name.to_owned(), updated)
+                );
+            },
+            Segment::Partial(name, indent, is_dynamic, partial_parameters) => {
+                let updated = if let Some(partial_parameters) = partial_parameters {
+                    let names = parameters.iter()
+                        .map(|(name, _)| name)
+                        .collect::<Vec<_>>();
+                    let mut updated = Vec::from(&partial_parameters[..]);
+                    updated.retain(
+                        |(name, _)| !names.iter().any(|xname| name == *xname)
+                    );
+                    updated.extend_from_slice(&parameters[..]);
+                    updated
+                } else {
+                    parameters.clone()
+                };
+                result.push(
+                    Segment::Partial(name.to_owned(), indent.to_owned(), *is_dynamic, Some(updated))
+                )
             }
-        } else {
-            String::new()
         }
-    }
+    };
+    result
 }
 
 fn html_escape(input: String) -> String {

@@ -92,8 +92,10 @@ pub(crate) enum Token<'a> {
     Value(&'a str, bool, bool),
     Section(&'a str),
     InvertedSection(&'a str),
+    BlockSection(&'a str),
     EndSection(&'a str),
     Partial(&'a str, bool, &'a str),
+    Parent(&'a str, bool, &'a str),
     Comment(&'a str),
     Delimiters(&'a str, &'a str),
     Error(String)
@@ -109,6 +111,8 @@ impl<'a> Token<'a> {
             match s {
                 '#' => Token::section(text.trim_sigil()),
                 '^' => Token::inverted_section(text.trim_sigil()),
+                '$' => Token::block_section(text.trim_sigil()),
+                '<' => Token::parent(text.trim_sigil(), indent),
                 '/' => Token::end_section(text.trim_sigil()),
                 '>' => Token::partial(text.trim_sigil(), indent),
                 '=' => Token::delimiters(text.trim_sigil()),
@@ -129,8 +133,24 @@ impl<'a> Token<'a> {
         Token::tag_with_label(Token::InvertedSection, text)
     }
 
+    fn block_section(text: &str) -> Token {
+        Token::tag_with_label(Token::BlockSection, text)
+    }
+
     fn end_section(text: &str) -> Token {
         Token::tag_with_label(Token::EndSection, text)
+    }
+
+    fn parent(text: &'a str, indent: &'a str) -> Token<'a> {
+        let is_dynamic = text.starts_with("*");
+        let text = if is_dynamic {
+            text[1..].trim_start()
+        } else {
+            text
+        };
+        Token::tag_with_label(
+            |t| Token::Parent(t, is_dynamic, indent), text
+        )
     }
 
     fn partial(text: &'a str, indent: &'a str) -> Token<'a> {

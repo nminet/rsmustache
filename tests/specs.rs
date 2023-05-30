@@ -14,7 +14,8 @@ fn spec_tests() -> Result<(), String> {
         "inverted",
         "delimiters",
         "partials",
-        "~dynamic-names"
+        "~dynamic-names",
+        "~inheritance"
     ].iter().map(
         |name| run_spec_file(name, false)
     ).fold(
@@ -65,6 +66,11 @@ fn partials_test() -> Result<(), String> {
 #[test]
 fn dynamic_names_test() -> Result<(), String> {
     run_spec_file("~dynamic-names", true)
+}
+
+#[test]
+fn inheritance_test() -> Result<(), String> {
+    run_spec_file("~inheritance", true)
 }
 
 

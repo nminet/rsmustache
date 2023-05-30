@@ -1,10 +1,10 @@
 overview:
 tests:
-  - name: Dotted Names - Broken Chain Resolution
-    desc: Each part of a dotted name should resolve only against its parent.
-    data:
-      a: { b: { } }
-      c: { name: 'Jim' }
-    template: '"{{a.b.c.name}}" == ""'
-    expected: '"" == ""'
+  - name: Overridden content
+    desc: Overridden content
+    data: { }
+    template: "{{<super}}{{$title}}sub template title{{/title}}{{/super}}"
+    partials:
+      super: "...{{$title}}Default title{{/title}}..."
+    expected: "...sub template title..."
     
