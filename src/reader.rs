@@ -1,4 +1,4 @@
-use std::cmp::min;
+use std::cmp::{min, max};
 
 #[derive(Clone)]
 pub(crate) struct Reader<'a> {
@@ -57,6 +57,15 @@ impl<'a> Reader<'a> {
             } else {
                 0
             };
+            let before_tag = if self.pos < self.after_standalone {
+                if let Some(p) = self.input[..self.pos].rfind(self.close_delimiter) {
+                    max(start_of_line, p + self.close_delimiter.len())
+                } else {
+                    self.pos
+                }
+            } else {
+                self.pos
+            };
             let starts_new_line = start_of_line == self.pos;
             let indent = if self.input.is_indent(start_of_line, self.pos) {
                 &self.input[start_of_line..self.pos]
@@ -70,7 +79,7 @@ impl<'a> Reader<'a> {
                     _ => self.after_standalone
                 }
             }
-            Token::tag(text, indent, starts_new_line)
+            Token::tag(text, indent, starts_new_line, before_tag, self.pos)
         } else {
             self.pos = self.input.len();
             Token::error("missing close delimiter")
@@ -90,10 +99,10 @@ impl<'a> Reader<'a> {
 pub(crate) enum Token<'a> {
     Text(&'a str, bool),
     Value(&'a str, bool, bool),
-    Section(&'a str),
+    Section(&'a str, usize),
     InvertedSection(&'a str),
     Block(&'a str),
-    EndSection(&'a str),
+    EndSection(&'a str, usize),
     Partial(&'a str, bool, &'a str),
     Parent(&'a str, bool, &'a str),
     Comment(&'a str),
@@ -106,14 +115,16 @@ impl<'a> Token<'a> {
         Token::Text(text, starts_new_line)
     }
     
-    fn tag(text: &'a str, indent: &'a str, starts_new_line: bool) -> Token<'a> {
+    fn tag(
+        text: &'a str, indent: &'a str, starts_new_line: bool, before_tag: usize, after_tag: usize
+    ) -> Token<'a> {
         if let Some(s) = text.chars().nth(0) {
             match s {
-                '#' => Token::section(text.trim_sigil()),
+                '#' => Token::section(text.trim_sigil(), after_tag),
                 '^' => Token::inverted_section(text.trim_sigil()),
                 '$' => Token::block(text.trim_sigil()),
                 '<' => Token::parent(text.trim_sigil(), indent),
-                '/' => Token::end_section(text.trim_sigil()),
+                '/' => Token::end_section(text.trim_sigil(), before_tag),
                 '>' => Token::partial(text.trim_sigil(), indent),
                 '=' => Token::delimiters(text.trim_sigil()),
                 '!' => Token::Comment(text.trim_sigil()),
@@ -125,8 +136,10 @@ impl<'a> Token<'a> {
         }
     }
 
-    fn section(text: &str) -> Token {
-        Token::tag_with_label(Token::Section, text)
+    fn section(text: &str, after_tag: usize) -> Token {
+        Token::tag_with_label(
+            |t| Token::Section(t, after_tag), text
+        )
     }
 
     fn inverted_section(text: &str) -> Token {
@@ -137,8 +150,10 @@ impl<'a> Token<'a> {
         Token::tag_with_label(Token::Block, text)
     }
 
-    fn end_section(text: &str) -> Token {
-        Token::tag_with_label(Token::EndSection, text)
+    fn end_section(text: &str, before_tag: usize) -> Token {
+        Token::tag_with_label(
+            |t| Token::EndSection(t, before_tag), text
+        )
     }
 
     fn parent(text: &'a str, indent: &'a str) -> Token<'a> {
@@ -353,7 +368,7 @@ mod tests {
             "x\n   {{/a}}  \ny",
             vec![
                 Token::Text("x\n", true),
-                Token::EndSection("a"),
+                Token::EndSection("a", 5),
                 Token::Text("y", true)
             ]
         )
@@ -365,10 +380,10 @@ mod tests {
             "x\n   {{ # a }}{{^x}}{{/x}}{{ / a }}  \ny",
             vec![
                 Token::Text("x\n", true),
-                Token::Section("a"),
+                Token::Section("a", 14),
                 Token::InvertedSection("x"),
-                Token::EndSection("x"),
-                Token::EndSection("a"),
+                Token::EndSection("x", 20),
+                Token::EndSection("a", 26),
                 Token::Text("y", true)
             ]
         )
@@ -380,11 +395,11 @@ mod tests {
             "x\n   {{ #a }}{{^b }}{{{x}}}{{ /b}}{{/a}}  \ny",
             vec![
                 Token::Text("x\n   ", true),
-                Token::Section("a"),
+                Token::Section("a", 13),
                 Token::InvertedSection("b"),
                 Token::Value("x", false, false),
-                Token::EndSection("b"),
-                Token::EndSection("a"),
+                Token::EndSection("b", 27),
+                Token::EndSection("a", 34),
                 Token::Text("  \ny", false)
             ]
         )
@@ -476,9 +491,9 @@ mod tests {
         expect_sequence(
             "{{#a}}\n{{#b}}\n{{#c}}\n\n",
             vec![
-                Token::Section("a"),
-                Token::Section("b"),
-                Token::Section("c"),
+                Token::Section("a", 7),
+                Token::Section("b", 14),
+                Token::Section("c", 21),
                 Token::Text("\n", true)
             ]
         )

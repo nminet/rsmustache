@@ -15,7 +15,7 @@ This implementation passes all standard tests for core modules as well as the *i
 
 ## Limitations.
 
-The implementation does not directly support callables in rendered data (sections, values). It can be implemented outside the crate as a specialization of the **Context** trait, however there is no mechanism to access unprocessed section text for such implementation.
+The implementation does not directly support callables producing contexts. It can be implemented outside the crate as a specialization of the **Context** trait.
 
 Support for the *lambda* module is not expected.
 
@@ -23,7 +23,6 @@ Support for the *lambda* module is not expected.
 ## TODO
 
 - Add API documentation
-- Add API to support callables requiring section text?
 - .../...
 
 ## Dependencies

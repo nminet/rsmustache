@@ -5,6 +5,7 @@ use crate::reader::{Reader, Token};
 use crate::context::Stack;
 
 
+#[derive(Debug, Clone)]
 pub struct Template {
     segments: Segments
 }
@@ -12,7 +13,7 @@ pub struct Template {
 impl Template {
     pub fn from(input: &str) -> Result<Self, String> {
         let mut reader = Reader::new(input);
-        let segments = parse(&mut reader, None)?;
+        let segments = parse(&mut reader, None)?.0;
         Ok(Template { segments })
     }
 
@@ -33,13 +34,40 @@ impl Template {
     ) -> String {
         render_segments(&self.segments, stack, indent, partials)
     }
+
+    pub fn section_location(&self, path: &str) -> Option<(usize, usize)> {
+        find_section(&self.segments, path)
+    }
 }
 
+fn find_section(segments: &Segments, path: &str) -> Option<(usize, usize)> {
+    if let Some(section) = segments.iter().find(
+        |segment| match segment {
+            Segment::Section(name,_ ,_ ,_) =>
+                path == name || path.starts_with(name) && path[name.len()..].starts_with('.'),
+            _ => false
+        }
+    ) {
+        match section {
+            Segment::Section(name, start, end, children) => {
+                if path == name {
+                    Some((*start, *end))
+                } else {
+                    find_section(children, &path[name.len() + 1..])                    
+                }
+            },
+            _ => panic!()
+        }
+    } else {
+        None
+    }
+}
 
 fn parse<'a>(
     reader: &mut Reader<'a>, section: Option<&str>
-) -> Result<Segments, String> {
+) -> Result<(Segments, usize), String> {
     let mut segments = Segments::new();
+    let mut before_tag: usize = 0;
     while let Some(token) = reader.pop_front() {
         match token {
             Token::Text(text, starts_new_line) =>
@@ -56,29 +84,30 @@ fn parse<'a>(
                         is_escaped, starts_new_line
                     )
                 ),
-            Token::Section(name) =>
+            Token::Section(name, after_open) => {
+                let (children, before_close) = parse(reader, Some(name))?;
                 segments.push(
                     Segment::Section(
-                        name.to_owned(),
-                        parse(reader, Some(name))?
+                        name.to_owned(), after_open, before_close, children
                     )
-                ),
+                )
+            },
             Token::InvertedSection(name) =>
                 segments.push(
                     Segment::InvertedSection(
                         name.to_owned(),
-                        parse(reader, Some(name))?
+                        parse(reader, Some(name))?.0
                     )
                 ),
             Token::Block(name) =>
                 segments.push(
                     Segment::Block(
                         name.to_owned(),
-                        parse(reader, Some(name))?
+                        parse(reader, Some(name))?.0
                     )
                 ),
             Token::Parent(name, is_dynamic, indent) => {
-                let parameters = parse(reader, Some(name))?
+                let parameters = parse(reader, Some(name))?.0
                     .into_iter()
                     .filter_map(|s|
                         match s {
@@ -95,10 +124,11 @@ fn parse<'a>(
                     )
                 )
             },
-            Token::EndSection(name) => {
+            Token::EndSection(name, pos) => {
                 if section != Some(name) {
                    return Err(format!("unexpected end of section {}", name));
                 }
+                before_tag = pos;
                 break;
             },
             Token::Partial(name, is_dynamic, indent) =>
@@ -120,7 +150,7 @@ fn parse<'a>(
             }
         }
     }
-    Ok(segments)
+    Ok((segments, before_tag))
 }
 
 
@@ -128,7 +158,7 @@ fn parse<'a>(
 enum Segment {
     Text(String, bool),
     Value(String, bool, bool),
-    Section(String, Segments),
+    Section(String, usize, usize, Segments),
     InvertedSection(String, Segments),
     Block(String, Segments),
     Partial(String, String, bool, Option<HashMap<String, Segments>>)
@@ -152,7 +182,7 @@ fn render_segment(
                 name, *is_escaped, *starts_new_line,
                 stack, indent
             ),
-        Segment::Section(name, children) =>
+        Segment::Section(name, _, _, children) =>
             render_section(
                 name, children,
                 stack, indent, partials
@@ -299,9 +329,9 @@ fn substitute(segments: &Segments, parameters: &HashMap<String, Segments>) -> Se
                     segment.clone()
                 )
             },
-            Segment::Section(name, segments) => {
+            Segment::Section(name, after_open, before_close, segments) => {
                 result.push(
-                    Segment::Section(name.to_owned(), substitute(segments, parameters))
+                    Segment::Section(name.to_owned(), *after_open, *before_close, substitute(segments, parameters))
                 )
             },
             Segment::InvertedSection(name, segments) => {
