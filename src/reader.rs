@@ -137,47 +137,51 @@ impl<'a> Token<'a> {
     }
 
     fn section(text: &str, after_tag: usize) -> Token {
-        Token::tag_with_label(
-            |t| Token::Section(t, after_tag), text
-        )
+        let tag = match maybe_tag(text) {
+            Ok(tag) => tag,
+            Err(token) => return token
+        };
+        Token::Section(tag, after_tag)
     }
 
     fn inverted_section(text: &str) -> Token {
-        Token::tag_with_label(Token::InvertedSection, text)
+        let tag = match maybe_tag(text) {
+            Ok(tag) => tag,
+            Err(token) => return token
+        };
+        Token::InvertedSection(tag)
     }
 
     fn block(text: &str) -> Token {
-        Token::tag_with_label(Token::Block, text)
+        let tag = match maybe_tag(text) {
+            Ok(tag) => tag,
+            Err(token) => return token
+        };
+        Token::Block(tag)
     }
 
     fn end_section(text: &str, before_tag: usize) -> Token {
-        Token::tag_with_label(
-            |t| Token::EndSection(t, before_tag), text
-        )
+        let tag = match maybe_tag(text) {
+            Ok(tag) => tag,
+            Err(token) => return token
+        };
+        Token::EndSection(tag, before_tag)
     }
 
     fn parent(text: &'a str, indent: &'a str) -> Token<'a> {
-        let is_dynamic = text.starts_with("*");
-        let text = if is_dynamic {
-            text[1..].trim_start()
-        } else {
-            text
+        let (tag, is_dynamic) = match maybe_dynamic_tag(text) {
+            Ok(result) => result,
+            Err(token) => return token
         };
-        Token::tag_with_label(
-            |t| Token::Parent(t, is_dynamic, indent), text
-        )
+        Token::Parent(tag, is_dynamic, indent)
     }
 
     fn partial(text: &'a str, indent: &'a str) -> Token<'a> {
-        let is_dynamic = text.starts_with("*");
-        let text = if is_dynamic {
-            text[1..].trim_start()
-        } else {
-            text
+        let (tag, is_dynamic) = match maybe_dynamic_tag(text) {
+            Ok(result) => result,
+            Err(token) => return token
         };
-        Token::tag_with_label(
-            |t| Token::Partial(t, is_dynamic, indent), text
-        )
+        Token::Partial(tag, is_dynamic, indent)
     }
 
     fn delimiters(text: &str) -> Token {
@@ -190,23 +194,40 @@ impl<'a> Token<'a> {
     }
 
     fn value(text: &str, escaped: bool, starts_new_line: bool) -> Token {
-        Token::tag_with_label(
-            |t| Token::Value(t, escaped, starts_new_line), text
-        )
+        let tag = match maybe_tag(text) {
+            Ok(tag) => tag,
+            Err(token) => return token
+        };
+        Token::Value(tag, escaped, starts_new_line)
     }
 
     fn error(text: &str) -> Token {
         Token::Error(text.to_string())
     }
+}
 
-    fn tag_with_label<F: Fn(&'a str) -> Token<'a>>(make: F, text: &'a str) -> Token {
-        if text.len() > 0 {
-            make(text)
-        } else {
-            Token::error("missing name")
-        }
+fn maybe_tag(text: &str) -> Result<&str, Token> {
+    if text == "." {
+        Ok(text)
+    } else if text.len() == 0 {
+        Err(Token::error("missing tag"))
+    } else if text.starts_with('.') || text.ends_with('.')|| text.contains(' ') || text.contains("..") {
+        Err(Token::error("invalid tag"))
+    } else {
+        Ok(text)
     }
+}
 
+
+fn maybe_dynamic_tag(text: &str) -> Result<(&str, bool), Token> {
+    let is_dynamic = text.starts_with("*");
+    let text = if is_dynamic {
+        text[1..].trim_start()
+    } else {
+        text
+    };
+    let tag = maybe_tag(text)?;
+    Ok((tag, is_dynamic))
 }
 
 
@@ -460,7 +481,7 @@ mod tests {
         expect_sequence(
             "{{ & }}",
             vec![
-                Token::error("missing name")
+                Token::error("missing tag")
             ]
         )
     }
