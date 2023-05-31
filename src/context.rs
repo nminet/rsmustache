@@ -82,7 +82,13 @@ impl<'a> Stack<'a> {
 
         } else if let Some(idx) = name.find(".") {
             let (head, tail) = name.split_at(idx);
-            self.push_dotted(head, true) && self.push_dotted(&tail[1..], true)
+            let len = self.len();
+            if self.push_dotted(head, true) && self.push_dotted(&tail[1..], true) {
+                true
+            } else {
+                self.truncate(len);
+                false
+            }
 
         } else if let Some(context) = self.child(name) {
             let contexts = if let Some(children) = context.children() {
@@ -270,6 +276,16 @@ mod test {
         let mut stack = Stack::new(&root);
 
         assert!(!stack.push("obj.part1.part2"));
+    }
+
+    #[test]
+    fn failed_dotted_resolution_leaves_stack_unchanged() {
+        let root = json1();
+        let mut stack = Stack::new(&root);
+
+        stack.push("name");
+        assert!(!stack.push("obj.part1.part3"));
+        assert_eq!(stack.value().unwrap(), "John Doe");
     }
 
     fn json1() -> JsonValue {

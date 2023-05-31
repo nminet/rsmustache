@@ -316,7 +316,7 @@ fn substitute(segments: &Segments, parameters: &HashMap<String, Segments>) -> Se
                 );
                 result.push(
                     Segment::Block(name.to_owned(), updated)
-                );
+                )
             },
             Segment::Partial(name, indent, is_dynamic, partial_parameters) => {
                 let updated = if let Some(partial_parameters) = partial_parameters {
