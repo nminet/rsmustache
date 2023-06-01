@@ -1,6 +1,5 @@
 use std::cmp::{min, max};
 
-#[derive(Clone)]
 pub(crate) struct Reader<'a> {
     input: &'a str,
     open_delimiter: &'a str,

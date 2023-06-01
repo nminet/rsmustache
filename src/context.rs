@@ -2,17 +2,42 @@ use std::fmt::Debug;
 use std::collections::VecDeque;
 
 
+/// A facade trait for rendering an external type into a Mustache template.
+/// 
+/// The Mustache template system assumes a context is one of
+/// - a named text value
+/// - a mapping of string to context
+/// - a list of contexts
+/// 
+/// In addition, all contexts have a *truthyness* property affecteing rendering
+/// of (possibly inverted) sections.
+/// 
+/// The trait is used by the rendering engine to access context data and navigate
+/// in the implied tree as directed by the rendered template.
+/// 
+/// To avoid unnecessary memory copies the trait assumes the implementation
+/// manages the lifecycle of the underlying data, providing a view on internal
+/// data structures.
+/// 
+/// See json.rs for an example of implementation.
 pub trait Context<'a>: Debug {
+    /// Get a child context from a mapping.
     fn child(&'a self, name: &str) -> Option<ContextRef<'a>>;
+
+    /// Get children contexts from a list.
     fn children(&'a self) -> Option<Vec<ContextRef<'a>>>;
-    fn value(&self) -> Option<String>;
+
+    /// Get the rendered text for the context.
+    fn value(&self) -> String;
+
+    /// Get the boolean value for the context.
     fn is_truthy(&self) -> bool;
 }
 
 pub type ContextRef<'a> = &'a dyn Context<'a>;
 
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct Frame<'a> {
     // VecDeque to avoid quadratic complexity when removing from start.
     contexts: VecDeque<ContextRef<'a>>,
@@ -39,7 +64,7 @@ impl<'a> Frame<'a> {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct Stack<'a> {
     frames: Vec<Frame<'a>>,
     backtrack_depth: usize
@@ -70,6 +95,11 @@ impl<'a> Stack<'a> {
 
     pub(crate) fn truncate(&mut self, len: usize) {
         self.frames.truncate(len);
+    }
+
+    fn merge(&mut self, other: Stack<'a>) {
+        let unchanged = self.frames.len() - other.backtrack_depth;
+        self.frames.extend_from_slice(&other.frames[unchanged..]);
     }
 
     fn push_dotted(&mut self, name: &str, dotted: bool) -> bool {
@@ -168,22 +198,10 @@ impl<'a> Stack<'a> {
         self.current()?.children()
     }
 
-    fn value(&self) -> Option<String> {
-        self.current()?.value()
-    }
-
-    pub(crate) fn get(&mut self, name: &str) -> Option<String> {
-        if name == "." {
-            self.value()
-        } else {
-            let len = self.len();
-            if self.push(name) {
-                let result = self.value();
-                self.truncate(len);
-                result
-            } else {
-                None
-            }
+    fn value(&self) -> String {
+        match self.current() {
+            Some(context) => context.value(),
+            _ => "".to_owned()
         }
     }
 
@@ -194,9 +212,19 @@ impl<'a> Stack<'a> {
         )
     }
 
-    fn merge(&mut self, other: Stack<'a>) {
-        let unchanged = self.frames.len() - other.backtrack_depth;
-        self.frames.extend_from_slice(&other.frames[unchanged..]);
+    pub(crate) fn get(&mut self, name: &str) -> Option<String> {
+        if name == "." {
+            Some(self.value())
+        } else {
+            let len = self.len();
+            if self.push(name) {
+                let result = self.value();
+                self.truncate(len);
+                Some(result)
+            } else {
+                None
+            }
+        }
     }
 }
 
@@ -233,9 +261,9 @@ mod test {
 
         stack.push("phones");
         assert!(stack.push("stuff"));
-        assert_eq!(stack.value().unwrap(), "item1");
+        assert_eq!(stack.value(), "item1");
         assert!(stack.next());
-        assert_eq!(stack.value().unwrap(), "item2");
+        assert_eq!(stack.value(), "item2");
         assert!(!stack.next());
         assert!(stack.down());
         assert_eq!(stack.get("extension").unwrap(), "1234567");
@@ -247,7 +275,7 @@ mod test {
         let mut stack = Stack::new(&root);
 
         assert!(stack.push("obj.part2"));
-        assert_eq!(stack.value().unwrap(), "yyy");
+        assert_eq!(stack.value(), "yyy");
     }
 
     #[test]
@@ -257,7 +285,7 @@ mod test {
 
         stack.push("phones");
         assert!(stack.push("obj.part2"));
-        assert_eq!(stack.value().unwrap(), "yyy");
+        assert_eq!(stack.value(), "yyy");
     }
 
     #[test]
@@ -285,7 +313,7 @@ mod test {
 
         stack.push("name");
         assert!(!stack.push("obj.part1.part3"));
-        assert_eq!(stack.value().unwrap(), "John Doe");
+        assert_eq!(stack.value(), "John Doe");
     }
 
     fn json1() -> JsonValue {

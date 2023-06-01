@@ -1,11 +1,9 @@
 use std::collections::HashMap;
-use std::fmt::Debug;
 use crate::ContextRef;
 use crate::reader::{Reader, Token};
 use crate::context::Stack;
 
 
-#[derive(Debug, Clone)]
 pub struct Template {
     segments: Segments
 }
@@ -154,7 +152,7 @@ fn parse<'a>(
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 enum Segment {
     Text(String, bool),
     Value(String, bool, bool),

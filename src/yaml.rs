@@ -21,13 +21,12 @@ impl<'a> Context<'a> for YamlValue {
         }
     }
 
-    fn value(&self) -> Option<String> {
+    fn value(&self) -> String {
         match self {
-            YamlValue::String(s) => Some(s.clone()),
-            YamlValue::Number(n) => Some(n.to_string()),
-            YamlValue::Bool(b) => Some(b.to_string()),
-            YamlValue::Null => Some(String::new()),
-            _ => None
+            YamlValue::String(s) => s.clone(),
+            YamlValue::Number(n) => n.to_string(),
+            YamlValue::Bool(b) => b.to_string(),
+            _ => "".to_owned()
         }
     }
 

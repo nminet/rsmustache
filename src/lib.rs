@@ -1,3 +1,11 @@
+//! A complete Mustache implementation with no added features.
+//! 
+//! This implementation support all core module as well as inheritance
+//! and dynamic-partials, passing relevant tests in [`specs`].
+//! 
+//! 
+//! 
+//! [`specs`]: https://github.com/mustache/spec
 mod template;
 mod reader;
 mod context;

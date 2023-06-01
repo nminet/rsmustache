@@ -21,13 +21,12 @@ impl<'a> Context<'a> for JsonValue {
         }
     }
 
-    fn value(&self) -> Option<String> {
+    fn value(&self) -> String {
         match self {
-            JsonValue::String(s) => Some(s.clone()),
-            JsonValue::Number(n) => Some(n.to_string()),
-            JsonValue::Bool(b) => Some(b.to_string()),
-            JsonValue::Null => Some(String::new()),
-            _ => None
+            JsonValue::String(s) => s.clone(),
+            JsonValue::Number(n) => n.to_string(),
+            JsonValue::Bool(b) => b.to_string(),
+            _ => "".to_owned()
         }
     }
 
