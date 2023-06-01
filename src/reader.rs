@@ -89,7 +89,7 @@ impl<'a> Reader<'a> {
     pub(crate) fn set_delimiters<'s: 'a>(&mut self, od: &'s str, cd: &'s str) {
         self.open_delimiter = od;
         self.close_delimiter = cd;
-        self.after_standalone = self.input[self.pos..].span_standalone(od, cd);
+        self.after_standalone = self.pos + self.input[self.pos..].span_standalone(od, cd);
     }
 }
 
@@ -185,12 +185,11 @@ impl<'a> Token<'a> {
     }
 
     fn delimiters(text: &str) -> Token {
-        let words: Vec<&str> = text.split(" ").filter(|s| !s.is_empty()).collect();
-        if words.len() == 2 && words[0].find('=') == None && words[1].find('=') == None {
-            Token::Delimiters(words[0], words[1])
-        } else {
-            Token::error("invalid delimiters tag")
-        }
+        let (od, cd) = match maybe_delimiters(text) {
+            Ok(result) => result,
+            Err(token) => return token
+        };
+        Token::Delimiters(od, cd)
     }
 
     fn value(text: &str, escaped: bool, starts_new_line: bool) -> Token {
@@ -218,7 +217,6 @@ fn maybe_tag(text: &str) -> Result<&str, Token> {
     }
 }
 
-
 fn maybe_dynamic_tag(text: &str) -> Result<(&str, bool), Token> {
     let is_dynamic = text.starts_with("*");
     let text = if is_dynamic {
@@ -230,6 +228,14 @@ fn maybe_dynamic_tag(text: &str) -> Result<(&str, bool), Token> {
     Ok((tag, is_dynamic))
 }
 
+fn maybe_delimiters(text: &str) -> Result<(&str, &str), Token> {
+    let words = text.split_ascii_whitespace().collect::<Vec<_>>();
+    if text.find("=").is_some() || words.len() != 2 {
+        Err(Token::error("invalid delimiters tag"))
+    } else {
+        Ok((words[0], words[1]))
+    }
+}
 
 trait ReaderStringOps {
     fn span_text(&self, open_delimiter: &str, close_delimiter: &str) -> (&str, usize, usize);
@@ -237,7 +243,7 @@ trait ReaderStringOps {
     fn span_standalone(&self, open_delimiter: &str, close_delimiter: &str) -> usize;
     fn is_standalone_open(&self, open_delimiter: &str) -> bool;
     fn trim_sigil(&self) -> &str;
-    fn is_blank(&self, start: usize, len: usize) -> bool;
+    fn is_space(&self, start: usize, len: usize) -> bool;
     fn is_indent(&self, start: usize, len: usize) -> bool;
 }
 
@@ -294,7 +300,7 @@ impl ReaderStringOps for str {
         let odl = open_delimiter.len();
         let cdl = close_delimiter.len();
         loop {
-            if !self.is_blank(pos, od) {
+            if !self.is_space(pos, od) {
                 break
             };
             if !self[od..].is_standalone_open(open_delimiter) {
@@ -309,32 +315,33 @@ impl ReaderStringOps for str {
             let x1 = self[cd..].find('\n');
             od = match (x0, x1)  {
                 (Some(od), Some(eol)) => {
-                    if !self.is_blank(cd, cd + min(od, eol)) {
+                    if !self.is_space(cd, cd + min(od, eol)) {
                         break
                     };
                     if eol < od {
                         after = cd + eol + 1;
-                        if !self.is_blank(after, cd + od) {
+                        if !self.is_space(after, cd + od) {
                             break
                         };
+                        pos = after
                     };
                     cd + od
                 },
                 (Some(od), None) => {
-                    if !self.is_blank(cd, cd + od) {
+                    if !self.is_space(cd, cd + od) {
                         break
                     };
                     cd + od
                 }
                 (None, Some(eol)) => {
-                    if !self.is_blank(cd, cd + eol) {
+                    if !self.is_space(cd, cd + eol) {
                         break
                     };
                     after = cd + eol + 1;
                     break
                 }
                 _ => {
-                    if self.is_blank(cd, self.len()) {
+                    if self.is_space(cd, self.len()) {
                         after = self.len();
                     }
                     break
@@ -355,10 +362,8 @@ impl ReaderStringOps for str {
         self[1..].trim_start()
     }
 
-    fn is_blank(&self, start: usize, after: usize) -> bool {
-        after == start || self[start..after].chars().all(
-            |c| c.is_ascii_whitespace()
-        )
+    fn is_space(&self, start: usize, after: usize) -> bool {
+        self[start..after].trim().is_empty() && self[start..after].find('\n').is_none()
     }
 
     fn is_indent(&self, start: usize, after: usize) -> bool {
@@ -506,7 +511,6 @@ mod tests {
         )
     }
 
-
     #[test]
     fn inner_section() {
         expect_sequence(
@@ -516,6 +520,18 @@ mod tests {
                 Token::Section("b", 14),
                 Token::Section("c", 21),
                 Token::Text("\n", true)
+            ]
+        )
+    }
+
+    #[test]
+    fn repeated_newline() {
+        expect_sequence(
+            "{{#a}} \n \n {{#b}}",
+            vec![
+                Token::Section("a", 8),
+                Token::Text(" \n", true),
+                Token::Section("b", 17),
             ]
         )
     }
