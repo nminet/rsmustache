@@ -34,7 +34,6 @@ impl<'a> Context<'a> for YamlValue {
         match self {
             YamlValue::Null => false,
             YamlValue::Bool(b) => *b,
-            YamlValue::Sequence(seq) => !seq.is_empty(),
             _ => true
         }
     }

@@ -34,7 +34,6 @@ impl<'a> Context<'a> for JsonValue {
         match self {
             JsonValue::Null => false,
             JsonValue::Bool(b) => *b,
-            JsonValue::Array(seq) => !seq.is_empty(),
             _ => true
         }
     }

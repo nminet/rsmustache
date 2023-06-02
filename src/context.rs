@@ -21,10 +21,10 @@ use std::collections::VecDeque;
 /// 
 /// See json.rs for an example of implementation.
 pub trait Context<'a>: Debug {
-    /// Get a child context from a mapping.
+    /// Get a child context from a mapping, or None if the context is not a mapping.
     fn child(&'a self, name: &str) -> Option<ContextRef<'a>>;
 
-    /// Get children contexts from a list.
+    /// Get children contexts from a list, or None if the context is not a list.
     fn children(&'a self) -> Option<Vec<ContextRef<'a>>>;
 
     /// Get the rendered text for the context.

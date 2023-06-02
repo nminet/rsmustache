@@ -271,9 +271,9 @@ fn render_inverted_section(
 ) -> String {
     let len = stack.len();
     let pushed = stack.push(name);
-    let falsy = !pushed || !stack.is_truthy();
+    let must_render = !pushed || !stack.is_truthy() || stack.current().is_none();
     stack.truncate(len);
-    if falsy {
+    if must_render {
         render_segments(children, stack, indent, partials)
     } else {
         "".to_owned()
