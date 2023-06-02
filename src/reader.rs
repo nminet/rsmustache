@@ -82,7 +82,7 @@ impl<'a> Reader<'a> {
             Token::tag(text, indent, starts_new_line, before_tag, self.pos)
         } else {
             self.pos = self.input.len();
-            Token::error("missing close delimiter")
+            Token::Error("missing close delimiter".to_owned())
         }
     }
 
@@ -120,118 +120,49 @@ impl<'a> Token<'a> {
     ) -> Token<'a> {
         if let Some(s) = text.chars().nth(0) {
             match s {
-                '#' => Token::section(text.trim_sigil(), after_tag),
-                '^' => Token::inverted_section(text.trim_sigil()),
-                '$' => Token::block(text.trim_sigil()),
-                '<' => Token::parent(text.trim_sigil(), indent),
-                '/' => Token::end_section(text.trim_sigil(), before_tag),
-                '>' => Token::partial(text.trim_sigil(), indent),
-                '=' => Token::delimiters(text.trim_sigil()),
-                '!' => Token::Comment(text.trim_sigil()),
-                '&' | '{' => Token::value(text.trim_sigil(), false, starts_new_line),
-                _ => Token::value(text, true, starts_new_line)
+                '#' => Token::Section(text.trim_sigil(), after_tag),
+                '^' => Token::InvertedSection(text.trim_sigil()),
+                '$' => Token::Block(text.trim_sigil()),
+                '/' => Token::EndSection(text.trim_sigil(), before_tag),
+                '!' => Token::Comment(text),
+                '<' => {
+                    let (tag, is_dynamic) = dynamic_tag(text.trim_sigil());
+                    Token::Parent(tag, is_dynamic, indent)
+                },
+                '>' => {
+                    let (tag, is_dynamic) = dynamic_tag(text.trim_sigil());
+                    Token::Partial(tag, is_dynamic, indent)
+                },
+                '=' => {
+                    let (od, cd) = match maybe_delimiters(text.trim_sigil()) {
+                        Ok(result) => result,
+                        Err(token) => return token
+                    };
+                    Token::Delimiters(od, cd)
+                },
+                '&' | '{' => Token::Value(text.trim_sigil(), false, starts_new_line),
+                _ => Token::Value(text, true, starts_new_line)
             }
         } else {
-            Token::error("empty open-close pair")
+            Token::Value("", true, starts_new_line)
         }
     }
-
-    fn section(text: &str, after_tag: usize) -> Token {
-        let tag = match maybe_tag(text) {
-            Ok(tag) => tag,
-            Err(token) => return token
-        };
-        Token::Section(tag, after_tag)
-    }
-
-    fn inverted_section(text: &str) -> Token {
-        let tag = match maybe_tag(text) {
-            Ok(tag) => tag,
-            Err(token) => return token
-        };
-        Token::InvertedSection(tag)
-    }
-
-    fn block(text: &str) -> Token {
-        let tag = match maybe_tag(text) {
-            Ok(tag) => tag,
-            Err(token) => return token
-        };
-        Token::Block(tag)
-    }
-
-    fn end_section(text: &str, before_tag: usize) -> Token {
-        let tag = match maybe_tag(text) {
-            Ok(tag) => tag,
-            Err(token) => return token
-        };
-        Token::EndSection(tag, before_tag)
-    }
-
-    fn parent(text: &'a str, indent: &'a str) -> Token<'a> {
-        let (tag, is_dynamic) = match maybe_dynamic_tag(text) {
-            Ok(result) => result,
-            Err(token) => return token
-        };
-        Token::Parent(tag, is_dynamic, indent)
-    }
-
-    fn partial(text: &'a str, indent: &'a str) -> Token<'a> {
-        let (tag, is_dynamic) = match maybe_dynamic_tag(text) {
-            Ok(result) => result,
-            Err(token) => return token
-        };
-        Token::Partial(tag, is_dynamic, indent)
-    }
-
-    fn delimiters(text: &str) -> Token {
-        let (od, cd) = match maybe_delimiters(text) {
-            Ok(result) => result,
-            Err(token) => return token
-        };
-        Token::Delimiters(od, cd)
-    }
-
-    fn value(text: &str, escaped: bool, starts_new_line: bool) -> Token {
-        let tag = match maybe_tag(text) {
-            Ok(tag) => tag,
-            Err(token) => return token
-        };
-        Token::Value(tag, escaped, starts_new_line)
-    }
-
-    fn error(text: &str) -> Token {
-        Token::Error(text.to_string())
-    }
 }
 
-fn maybe_tag(text: &str) -> Result<&str, Token> {
-    if text == "." {
-        Ok(text)
-    } else if text.len() == 0 {
-        Err(Token::error("missing tag"))
-    } else if text.starts_with('.') || text.ends_with('.')|| text.contains(' ') || text.contains("..") {
-        Err(Token::error("invalid tag"))
-    } else {
-        Ok(text)
-    }
-}
-
-fn maybe_dynamic_tag(text: &str) -> Result<(&str, bool), Token> {
+fn dynamic_tag(text: &str) -> (&str, bool) {
     let is_dynamic = text.starts_with("*");
-    let text = if is_dynamic {
+    let tag = if is_dynamic {
         text[1..].trim_start()
     } else {
         text
     };
-    let tag = maybe_tag(text)?;
-    Ok((tag, is_dynamic))
+    (tag, is_dynamic)
 }
 
 fn maybe_delimiters(text: &str) -> Result<(&str, &str), Token> {
     let words = text.split_ascii_whitespace().collect::<Vec<_>>();
     if text.find("=").is_some() || words.len() != 2 {
-        Err(Token::error("invalid delimiters tag"))
+        Err(Token::Error("invalid delimiters tag".to_owned()))
     } else {
         Ok((words[0], words[1]))
     }
@@ -456,7 +387,7 @@ mod tests {
         expect_sequence(
             "{{= +++   --- }}",
             vec![
-                Token::error("missing close delimiter")
+                Token::Error("missing close delimiter".to_owned())
             ]
         )
     }
@@ -466,7 +397,7 @@ mod tests {
         expect_sequence(
             "{{= |=   | =}}",
             vec![
-                Token::error("invalid delimiters tag")
+                Token::Error("invalid delimiters tag".to_owned())
             ]
         )
     }
@@ -476,17 +407,7 @@ mod tests {
         expect_sequence(
             "{{= |   =| =}}",
             vec![
-                Token::error("invalid delimiters tag")
-            ]
-        )
-    }
-
-    #[test]
-    fn value_missing_name() {
-        expect_sequence(
-            "{{ & }}",
-            vec![
-                Token::error("missing tag")
+                Token::Error("invalid delimiters tag".to_owned())
             ]
         )
     }
