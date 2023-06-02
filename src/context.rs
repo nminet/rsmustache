@@ -139,7 +139,7 @@ impl<'a> Stack<'a> {
         let len = self.frames.len();
         if len > 1 {
             let mut next_len = len - 1;
-            while self.frames.get(next_len - 1).unwrap().dotted {
+            while self.frames[next_len - 1].dotted {
                 next_len -= 1;
             }
             self.frames.truncate(next_len);
