@@ -180,8 +180,9 @@ trait ReaderStringOps {
 
 impl ReaderStringOps for str {
     // return
-    // - the position after the current text
-    // - the position after the current text not part of a sequence of standalone tags
+    // - the current text, excluding whitespace owned by a standalone sequence
+    // - the position after text, skipping leading whitespace in standalone sequence
+    // - the position after standalone sequence following the current text
     fn span_text(&self, open_delimiter: &str, close_delimiter: &str) -> (&str, usize, usize) {
         let after_text = self.find(open_delimiter).unwrap_or(self.len());
         let mut end_of_text = after_text;
@@ -201,13 +202,19 @@ impl ReaderStringOps for str {
     fn span_tag(&self, open_delimiter: &str, close_delimiter: &str) -> Option<(&str, usize)> {
         let odl = open_delimiter.len();
         if let Some(c) = self.chars().nth(odl) {
-            let (cd, cdl) = match c {
-                '{' => (format!("{}{}", '}', close_delimiter), close_delimiter.len() + 1),
-                '=' => (format!("{}{}", '=', close_delimiter), close_delimiter.len() + 1),
-                _ => (close_delimiter.to_string(), close_delimiter.len())
-
-            };
-            if let Some(p) = self[odl..].find(&cd) {
+            if let (Some(p), cdl) = match c {
+                '{' => {
+                    let close_delimiter = "}".to_owned() + close_delimiter;
+                    (self[odl..].find(&close_delimiter), close_delimiter.len())
+                },
+                '=' => {
+                    let close_delimiter = "=".to_owned() + close_delimiter;
+                    (self[odl..].find(&close_delimiter), close_delimiter.len())
+                },
+                _ => {
+                    (self[odl..].find(&close_delimiter), close_delimiter.len())
+                }
+            } {
                 Some((&self[odl..odl + p].trim(), odl + p + cdl))
             } else {
                 None
