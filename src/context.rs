@@ -4,20 +4,48 @@ use std::collections::VecDeque;
 
 /// A facade trait for rendering an external type into a Mustache template.
 /// 
-/// The Mustache template system assumes a context is one of
-/// - a named text value
-/// - a mapping of string to context
-/// - a list of contexts
-/// 
-/// In addition, all contexts have a *truthyness* property affecteing rendering
-/// of (possibly inverted) sections.
-/// 
 /// The trait is used by the rendering engine to access context data and navigate
 /// in the implied tree as directed by the rendered template.
 /// 
 /// To avoid unnecessary memory copies the trait assumes the implementation
 /// manages the lifecycle of the underlying data, providing a view on internal
 /// data structures.
+///
+/// 
+/// The Mustache template system assumes a context is one of
+/// - a named text value
+/// - a mapping of string to context
+/// - a list of contexts
+/// 
+/// In addition, contexts have a *falsyness* property controling rendering
+/// of sections:
+/// 
+/// If 'x' is any falsy context it can be used as a section
+/// ```text
+/// {{#x}}
+/// this is not rendered
+/// {{/x}}
+/// {{^x}}
+/// this is rendered
+/// {{/x}}
+/// ```
+/// 
+/// will render as either
+/// ```text
+/// this is not rendered
+/// ```
+/// or
+/// ```text
+/// this is rendered
+/// ```
+/// 
+/// Mustache specifies that empty lists always trigger inverted session.
+/// Thus whatever the trait implementation of is_falsy for lists,
+/// ```text
+/// {{^an_empty_list}}
+/// This is rendered
+/// {{/an_empty_list}}
+/// ```
 /// 
 /// See json.rs for an example of implementation.
 pub trait Context<'a>: Debug {
@@ -30,8 +58,8 @@ pub trait Context<'a>: Debug {
     /// Get the rendered text for the context.
     fn value(&self) -> String;
 
-    /// Get the boolean value for the context.
-    fn is_truthy(&self) -> bool;
+    /// *true* if the context is falsy.
+    fn is_falsy(&self) -> bool;
 }
 
 pub type ContextRef<'a> = &'a dyn Context<'a>;
@@ -205,10 +233,10 @@ impl<'a> Stack<'a> {
         }
     }
 
-    pub(crate) fn is_truthy(&self) -> bool {
+    pub(crate) fn is_falsy(&self) -> bool {
         self.current().map_or(
-            false,
-             |context| context.is_truthy()
+            true,
+             |context| context.is_falsy()
         )
     }
 

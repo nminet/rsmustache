@@ -30,11 +30,11 @@ impl<'a> Context<'a> for YamlValue {
         }
     }
 
-    fn is_truthy(&self) -> bool {
+    fn is_falsy(&self) -> bool {
         match self {
-            YamlValue::Null => false,
-            YamlValue::Bool(b) => *b,
-            _ => true
+            YamlValue::Null => true,
+            YamlValue::Bool(b) => !*b,
+            _ => false
         }
     }
 }

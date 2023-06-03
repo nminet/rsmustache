@@ -255,7 +255,7 @@ fn render_section(
 ) -> String {
     let mut result = String::new();
     let len = stack.len();
-    if stack.push(name) && stack.is_truthy() {
+    if stack.push(name) && !stack.is_falsy() {
         while stack.current().is_some() {
             result.push_str(&render_segments(children, stack, indent, partials));
             stack.next();
@@ -271,7 +271,7 @@ fn render_inverted_section(
 ) -> String {
     let len = stack.len();
     let pushed = stack.push(name);
-    let must_render = !pushed || !stack.is_truthy() || stack.current().is_none();
+    let must_render = !pushed || stack.is_falsy() || stack.current().is_none();
     stack.truncate(len);
     if must_render {
         render_segments(children, stack, indent, partials)

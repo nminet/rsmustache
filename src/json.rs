@@ -30,15 +30,24 @@ impl<'a> Context<'a> for JsonValue {
         }
     }
 
-    fn is_truthy(&self) -> bool {
+    /// Falsy indicator.
+    /// 
+    /// Falsy values in this implementation are:
+    /// - boolean false,
+    /// - null
+    /// - empty string
+    /// - number 0 (int or float)
+    /// 
+    /// All other values are truthy.
+    fn is_falsy(&self) -> bool {
         match self {
-            JsonValue::Null => false,
-            JsonValue::String(s) => !s.is_empty(),
+            JsonValue::Null => true,
+            JsonValue::String(s) => s.is_empty(),
             JsonValue::Number(n) =>
-                n.is_u64() && n.as_u64().unwrap() != 0 ||
-                n.is_f64() && n.as_f64().unwrap() != 0f64,
-            JsonValue::Bool(b) => *b,
-            _ => true
+                n.is_u64() && n.as_u64().unwrap() == 0 ||
+                n.is_f64() && n.as_f64().unwrap() == 0f64,
+            JsonValue::Bool(b) => !*b,
+            _ => false
         }
     }
 }
