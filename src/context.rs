@@ -9,7 +9,10 @@ use std::collections::VecDeque;
 /// 
 /// To avoid unnecessary memory copies the trait assumes the implementation
 /// manages the lifecycle of the underlying data, providing a view on internal
-/// data structures.
+/// data structures. To support this, functions in the trait return context as
+/// ```text
+/// type ContextRef<'a> = &'a dyn Context<'a>
+/// ```
 ///
 /// 
 /// The Mustache template system assumes a context is one of

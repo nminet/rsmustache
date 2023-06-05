@@ -290,17 +290,16 @@ fn render_partial(
         } else {
             store.get(name)
         };
-        match maybe_template {
-            Some(template) => {
-                let next_indent = indent.to_owned() + children_indent;
-                if let Some(parameters) = parameters {
-                    let segments = substitute(&template.segments, parameters);
-                    render_segments(&segments, stack, &next_indent, partials)
-                } else {
-                    render_segments(&template.segments, stack, &next_indent, partials)
-                }  
-            },
-            None => "".to_owned()
+        if let Some(template) = maybe_template {
+            let next_indent = indent.to_owned() + children_indent;
+            if let Some(parameters) = parameters {
+                let segments = substitute(&template.segments, parameters);
+                render_segments(&segments, stack, &next_indent, partials)
+            } else {
+                render_segments(&template.segments, stack, &next_indent, partials)
+            }
+        } else {
+            "".to_owned()
         }
     } else {
         "".to_owned()
@@ -319,49 +318,43 @@ fn render_segments(
 
 
 fn substitute(segments: &Segments, parameters: &HashMap<String, Segments>) -> Segments {
-    let mut result = Vec::new();
-    for segment in segments {
-        match segment {
-            Segment::Text(_, _) | Segment::Value(_, _, _) => {
-                result.push(
-                    segment.clone()
-                )
-            },
-            Segment::Section(name, after_open, before_close, segments) => {
-                result.push(
-                    Segment::Section(name.to_owned(), *after_open, *before_close, substitute(segments, parameters))
-                )
-            },
-            Segment::InvertedSection(name, segments) => {
-                result.push(
-                    Segment::InvertedSection(name.to_owned(), substitute(segments, parameters))
-                )
-            },
-            Segment::Block(name, segments) => {
-                let updated = parameters.get(name).map_or_else(
-                    || substitute(segments, parameters),
-                    |segments| segments.clone() 
-                );
-                result.push(
-                    Segment::Block(name.to_owned(), updated)
-                )
-            },
-            Segment::Partial(name, indent, is_dynamic, partial_parameters) => {
-                let updated = if let Some(partial_parameters) = partial_parameters {
-                    let mut updated = HashMap::new();
-                    updated.extend(partial_parameters.clone().into_iter());
-                    updated.extend(parameters.clone().into_iter());
-                    Some(updated)
-                } else {
-                    None
-                };
-                result.push(
-                    Segment::Partial(name.to_owned(), indent.to_owned(), *is_dynamic, updated)
-                )
-            }
+    segments.iter()
+        .map(|segment|
+            substitute_segment(segment, parameters)
+        ).collect::<Vec<_>>()
+}
+
+fn substitute_segment(segment: &Segment, parameters: &HashMap<String, Segments>) -> Segment {
+    match segment {
+        Segment::Text(_, _) | Segment::Value(_, _, _) =>
+            segment.clone(),
+        Segment::Section(name, after_open, before_close, segments) =>
+            Segment::Section(
+                name.to_owned(), *after_open, *before_close, substitute(segments, parameters)
+            ),
+        Segment::InvertedSection(name, segments) =>
+            Segment::InvertedSection(
+                name.to_owned(), substitute(segments, parameters)
+            ),
+        Segment::Block(name, segments) => {
+            let updated = parameters.get(name).map_or_else(
+                || substitute(segments, parameters),
+                |segments| segments.clone() 
+            );
+            Segment::Block(name.to_owned(), updated)
+        },
+        Segment::Partial(name, indent, is_dynamic, partial_parameters) => {
+            let updated = if let Some(partial_parameters) = partial_parameters {
+                let mut updated = HashMap::new();
+                updated.extend(partial_parameters.clone().into_iter());
+                updated.extend(parameters.clone().into_iter());
+                Some(updated)
+            } else {
+                None
+            };
+            Segment::Partial(name.to_owned(), indent.to_owned(), *is_dynamic, updated)
         }
-    };
-    result
+    }
 }
 
 fn html_escape(input: String) -> String {
