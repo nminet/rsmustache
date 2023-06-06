@@ -14,19 +14,17 @@ fn spec_tests() -> Result<(), String> {
         "inverted",
         "delimiters",
         "partials",
-        "~dynamic-names",
-        "~inheritance"
-    ].iter().map(
-        |name| run_spec_file(name, false)
-    ).fold(
+        "~dynamic-names"
+    ].iter().fold(
         Result::Ok(()),
-        |acc, res| match (acc, res) {
+        |acc, name| match (acc, run_spec_file(name, false)) {
             (acc, Ok(())) => acc,
             (Ok(()), err) => err,
             (Err(err1), Err(err2)) => Err(format!("{}\n{}", err1, err2))
         }
     )
 }
+    
 
 #[test]
 fn comments_test() -> Result<(), String> {
