@@ -379,14 +379,16 @@ pub struct TemplateMap {
 }
 
 impl TemplateMap {
-    pub fn new() -> Self {
-        TemplateMap { templates: HashMap::new() }
-    }
-
-    pub fn load(&mut self, name: &str, input: &str) -> Result<(), String> {
-        let template = Template::from(input)?;
-        self.templates.insert(name.to_owned(), template);
-        Ok(())
+    pub fn new(input: HashMap<&str, &str>) -> Result<Self, String> {
+        let mut templates = HashMap::new();
+        for (name, text) in input {
+            let template = match Template::from(text) {
+                Ok(template) => template,
+                Err(err) => return Err(format!("{}: {}", name, err))
+            };
+            templates.insert(name.to_owned(), template);
+        }
+        Ok(TemplateMap { templates })
     }
 }
 

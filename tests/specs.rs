@@ -1,7 +1,7 @@
 extern crate mustache;
 use mustache::{Template, TemplateMap, YamlValue};
 
-use std::fs;
+use std::{fs, collections::HashMap};
 use serde::Deserialize;
 use serde_yaml::Mapping as YamlMapping;
 
@@ -109,14 +109,18 @@ fn yaml_spec(name: &str) -> Result<YamlSpecFile, String> {
 
 fn run_spec_test(test: &YamlTestSpec, log: bool) -> Result<(), String> {
     let template = Template::from(&test.template)?;
-    let mut partials = TemplateMap::new();
-    if let Some(values) = &test.partials {
-        for (name, text) in values {
-            let name = name.as_str().unwrap();
-            let input = text.as_str().unwrap();
-            partials.load(name, input)?;
-        }
+    let partials = if let Some(values) = &test.partials {
+        values.iter().map(
+            |(name, text)| {
+                let name = name.as_str().unwrap();
+                let text = text.as_str().unwrap();
+                (name, text)
+            }
+        ).collect::<HashMap<_, _>>()
+    } else {
+        HashMap::new()
     };
+    let partials = TemplateMap::new(partials)?;
     let result = template.render_with_partials(
         &test.data, &partials
     );
