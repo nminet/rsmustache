@@ -117,7 +117,7 @@ impl<'a> Token<'a> {
     fn tag(
         text: &'a str, indent: &'a str, starts_new_line: bool, before_tag: usize, after_tag: usize
     ) -> Token<'a> {
-        if let Some(s) = text.chars().nth(0) {
+        if let Some(s) = text.chars().next() {
             match s {
                 '#' => Token::Section(text.trim_sigil(), after_tag),
                 '^' => Token::InvertedSection(text.trim_sigil()),
@@ -173,8 +173,8 @@ trait ReaderStringOps {
     fn span_standalone(&self, open_delimiter: &str, close_delimiter: &str) -> usize;
     fn is_standalone_open(&self, open_delimiter: &str) -> bool;
     fn trim_sigil(&self) -> &str;
-    fn is_space(&self, start: usize, len: usize) -> bool;
-    fn is_indent(&self, start: usize, len: usize) -> bool;
+    fn is_space(&self, start: usize, after: usize) -> bool;
+    fn is_indent(&self, start: usize, after: usize) -> bool;
 }
 
 impl ReaderStringOps for str {
