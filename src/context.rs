@@ -1,6 +1,4 @@
-use std::fmt::Debug;
 use std::collections::VecDeque;
-
 
 /// A facade trait for rendering an external type into a Mustache template.
 /// 
@@ -19,39 +17,27 @@ use std::collections::VecDeque;
 /// - a named text value
 /// - a mapping of string to context
 /// - a list of contexts
+/// - a boolean value
 /// 
-/// In addition, contexts have a *falsyness* property controling rendering
-/// of sections:
-/// 
-/// If 'x' is any falsy context it can be used as a section
+/// Any context can be used as a section.
 /// ```text
 /// {{#x}}
-/// this is not rendered
+/// this is rendered if x is not falsy or a non-empty list
 /// {{/x}}
 /// {{^x}}
-/// this is rendered
+/// this is rendered if x is falsy or an empty list
 /// {{/x}}
 /// ```
+/// If **x** is a list, literal text in the section is emitted for each item.
 /// 
-/// will render as either
-/// ```text
-/// this is not rendered
-/// ```
-/// or
-/// ```text
-/// this is rendered
-/// ```
+/// Mustache requires null and false to be falsy. Boolean conversion of
+/// other values are left for implementation to decide (the **is_falsy**
+/// entry in the trait allows controlling this).
 /// 
-/// Mustache specifies that empty lists always trigger inverted session.
-/// Thus whatever the trait implementation of is_falsy for lists,
-/// ```text
-/// {{^an_empty_list}}
-/// This is rendered
-/// {{/an_empty_list}}
-/// ```
 /// 
-/// See json.rs for an example of implementation.
-pub trait Context<'a>: Debug {
+/// See Implementation section below for examples.
+
+pub trait Context<'a> {
     /// Get a child context from a mapping, or None if the context is not a mapping.
     fn child(&'a self, name: &str) -> Option<ContextRef<'a>>;
 
@@ -61,7 +47,7 @@ pub trait Context<'a>: Debug {
     /// Get the rendered text for the context.
     fn value(&self) -> String;
 
-    /// *true* if the context is falsy.
+    /// Indicate if the context is falsy.
     fn is_falsy(&self) -> bool;
 }
 
