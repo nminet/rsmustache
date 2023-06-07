@@ -1,19 +1,21 @@
 use std::collections::VecDeque;
 
-/// A facade trait for rendering an external type into a Mustache template.
+/// Adapter to render an external type into a Mustache template.
 /// 
-/// The trait is used by the rendering engine to access context data and navigate
+/// The trait is used by the rendering engine to obtain context data and navigate
 /// in the implied tree as directed by the rendered template.
 /// 
-/// To avoid unnecessary memory copies the trait assumes the implementation
-/// manages the lifecycle of the underlying data, providing a view on internal
-/// data structures. To support this, functions in the trait return context as
+/// To avoid unnecessary memory copies and support dynamic generation of data,
+/// the trait assumes the implementation manages the lifecycle of the underlying
+/// data, providing a view on internal data structures. To support this, functions
+/// in the trait return context as
 /// ```text
 /// type ContextRef<'a> = &'a dyn Context<'a>
 /// ```
 ///
 /// 
-/// The Mustache template system assumes a context is one of
+/// The Mustache template system - for the purpose of rendering - assume the context
+/// is one of
 /// - a named text value
 /// - a mapping of string to context
 /// - a list of contexts

@@ -25,7 +25,7 @@ fn spec_tests() -> Result<(), String> {
         }
     )
 }
-    
+
 
 #[test]
 fn comments_test() -> Result<(), String> {
