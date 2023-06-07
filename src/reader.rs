@@ -98,7 +98,7 @@ impl<'a> Reader<'a> {
 pub(crate) enum Token<'a> {
     Text(&'a str, bool),
     Value(&'a str, bool, bool),
-    Section(&'a str, usize),
+    Section(&'a str, usize, bool),
     InvertedSection(&'a str),
     Block(&'a str),
     EndSection(&'a str, usize),
@@ -119,17 +119,20 @@ impl<'a> Token<'a> {
     ) -> Token<'a> {
         if let Some(s) = text.chars().next() {
             match s {
-                '#' => Token::Section(text.trim_sigil(), after_tag),
+                '#' => {
+                    let (tag, is_seqcheck) = qualified_tag(text.trim_sigil(), '?');
+                    Token::Section(tag, after_tag, is_seqcheck)
+                },
                 '^' => Token::InvertedSection(text.trim_sigil()),
                 '$' => Token::Block(text.trim_sigil()),
                 '/' => Token::EndSection(text.trim_sigil(), before_tag),
                 '!' => Token::Comment(text),
                 '<' => {
-                    let (tag, is_dynamic) = dynamic_tag(text.trim_sigil());
+                    let (tag, is_dynamic) = qualified_tag(text.trim_sigil(), '*');
                     Token::Parent(tag, is_dynamic, indent)
                 },
                 '>' => {
-                    let (tag, is_dynamic) = dynamic_tag(text.trim_sigil());
+                    let (tag, is_dynamic) = qualified_tag(text.trim_sigil(), '*');
                     Token::Partial(tag, is_dynamic, indent)
                 },
                 '=' => {
@@ -148,14 +151,14 @@ impl<'a> Token<'a> {
     }
 }
 
-fn dynamic_tag(text: &str) -> (&str, bool) {
-    let is_dynamic = text.starts_with("*");
-    let tag = if is_dynamic {
+fn qualified_tag(text: &str, qualifier: char) -> (&str, bool) {
+    let is_qualified = text.starts_with(qualifier);
+    let tag = if is_qualified {
         text[1..].trim_start()
     } else {
         text
     };
-    (tag, is_dynamic)
+    (tag, is_qualified)
 }
 
 fn maybe_delimiters(text: &str) -> Result<(&str, &str), Token> {
@@ -343,7 +346,7 @@ mod tests {
             "x\n   {{ # a }}{{^x}}{{/x}}{{ / a }}  \ny",
             vec![
                 Token::Text("x\n", true),
-                Token::Section("a", 14),
+                Token::Section("a", 14, false),
                 Token::InvertedSection("x"),
                 Token::EndSection("x", 20),
                 Token::EndSection("a", 26),
@@ -358,7 +361,7 @@ mod tests {
             "x\n   {{ #a }}{{^b }}{{{x}}}{{ /b}}{{/a}}  \ny",
             vec![
                 Token::Text("x\n   ", true),
-                Token::Section("a", 13),
+                Token::Section("a", 13, false),
                 Token::InvertedSection("b"),
                 Token::Value("x", false, false),
                 Token::EndSection("b", 27),
@@ -443,9 +446,9 @@ mod tests {
         expect_sequence(
             "{{#a}}\n{{#b}}\n{{#c}}\n\n",
             vec![
-                Token::Section("a", 7),
-                Token::Section("b", 14),
-                Token::Section("c", 21),
+                Token::Section("a", 7, false),
+                Token::Section("b", 14, false),
+                Token::Section("c", 21, false),
                 Token::Text("\n", true)
             ]
         )
@@ -456,9 +459,19 @@ mod tests {
         expect_sequence(
             "{{#a}} \n \n {{#b}}",
             vec![
-                Token::Section("a", 8),
+                Token::Section("a", 8, false),
                 Token::Text(" \n", true),
-                Token::Section("b", 17),
+                Token::Section("b", 17, false),
+            ]
+        )
+    }
+
+    #[test]
+    fn seqcheck_section() {
+        expect_sequence(
+            "{{#?a}}",
+            vec![
+                Token::Section("a", 7, true)
             ]
         )
     }

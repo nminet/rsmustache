@@ -14,7 +14,8 @@ fn spec_tests() -> Result<(), String> {
         "inverted",
         "delimiters",
         "partials",
-        "~dynamic-names"
+        "~dynamic-names",
+        "~sequence-check"
     ].iter().fold(
         Result::Ok(()),
         |acc, name| match (acc, run_spec_file(name, false)) {
@@ -66,12 +67,15 @@ fn inheritance_test() -> Result<(), String> {
     run_spec_file("~inheritance", true)
 }
 
+#[test]
+fn sequence_check_test() -> Result<(), String> {
+    run_spec_file("~sequence-check", true)
+}
+
 
 fn run_spec_file(name: &str, log: bool) -> Result<(), String> {
     yaml_spec(name)?
-        .tests
-        .iter()
-        .fold(
+        .tests.iter().fold(
             Ok(()),
             |acc, test| match (acc, run_spec_test(test, log)) {
                 (acc, Ok(())) => acc,

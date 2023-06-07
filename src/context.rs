@@ -58,15 +58,17 @@ pub type ContextRef<'a> = &'a dyn Context<'a>;
 struct Frame<'a> {
     // VecDeque to avoid quadratic complexity when removing from start.
     contexts: VecDeque<ContextRef<'a>>,
-    dotted: bool
+    is_sequence: bool,
+    is_dotted: bool
 }
 
 impl<'a> Frame<'a> {
-    fn new(contexts: Vec<ContextRef<'a>>, dotted: bool) -> Self {
+    fn new(contexts: Vec<ContextRef<'a>>, is_sequence: bool, is_dotted: bool) -> Self {
         let contexts = VecDeque::from(contexts);
         Frame {
             contexts,
-            dotted
+            is_sequence,
+            is_dotted
         }
     }
 
@@ -89,7 +91,7 @@ pub(crate) struct Stack<'a> {
 
 impl<'a> Stack<'a> {
     pub(crate) fn new(root: ContextRef<'a>) -> Self {
-        let frame = Frame::new(vec![root], false);
+        let frame = Frame::new(vec![root], false, false);
         let frames = vec![frame];
         Stack { 
             frames,
@@ -119,10 +121,10 @@ impl<'a> Stack<'a> {
         self.frames.extend_from_slice(&other.frames[unchanged..]);
     }
 
-    fn push_dotted(&mut self, name: &str, dotted: bool) -> bool {
+    fn push_dotted(&mut self, name: &str, is_dotted: bool) -> bool {
         if name == "." {
             if let Some(children) = self.children() {
-                let frame = Frame::new(children, dotted);
+                let frame = Frame::new(children, true, is_dotted);
                 self.frames.push(frame);
             };
             true
@@ -138,16 +140,16 @@ impl<'a> Stack<'a> {
             }
 
         } else if let Some(context) = self.child(name) {
-            let contexts = if let Some(children) = context.children() {
-                children
+            let (contexts, is_sequence) = if let Some(children) = context.children() {
+                (children, true)
             } else {
-                vec![context]
+                (vec![context], false)
             };
-            let frame = Frame::new(contexts, dotted);
+            let frame = Frame::new(contexts, is_sequence, is_dotted);
             self.frames.push(frame);
             true
         
-        } else if dotted && self.top().dotted {
+        } else if is_dotted && self.top().is_dotted {
             // no backtracking while processing dotted name
             false
 
@@ -186,7 +188,7 @@ impl<'a> Stack<'a> {
         let len = self.frames.len();
         if len > 1 {
             let mut next_len = len - 1;
-            while self.frames[next_len - 1].dotted {
+            while self.frames[next_len - 1].is_dotted {
                 next_len -= 1;
             }
             self.frames.truncate(next_len);
@@ -201,6 +203,10 @@ impl<'a> Stack<'a> {
 
     fn top(&self) -> &Frame<'a> {
         self.frames.last().unwrap()
+    }
+
+    pub(crate) fn top_is_sequence(&self) -> bool {
+        self.top().is_sequence
     }
 
     pub(crate) fn current(&self) -> Option<&ContextRef<'a>> {

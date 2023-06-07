@@ -41,13 +41,13 @@ impl Template {
 fn find_section(segments: &Segments, path: &str) -> Option<(usize, usize)> {
     if let Some(section) = segments.iter().find(
         |segment| match segment {
-            Segment::Section(name,_ ,_ ,_) =>
+            Segment::Section(name, _, _, false, _) =>
                 path == name || path.starts_with(name) && path[name.len()..].starts_with('.'),
             _ => false
         }
     ) {
         match section {
-            Segment::Section(name, start, end, children) => {
+            Segment::Section(name, start, end, _, children) => {
                 if path == name {
                     Some((*start, *end))
                 } else {
@@ -82,11 +82,11 @@ fn parse<'a>(
                         is_escaped, starts_new_line
                     )
                 ),
-            Token::Section(name, after_open) => {
+            Token::Section(name, after_open, is_seqcheck) => {
                 let (children, before_close) = parse(reader, Some(name))?;
                 segments.push(
                     Segment::Section(
-                        name.to_owned(), after_open, before_close, children
+                        name.to_owned(), after_open, before_close, is_seqcheck, children
                     )
                 )
             },
@@ -156,7 +156,7 @@ fn parse<'a>(
 enum Segment {
     Text(String, bool),
     Value(String, bool, bool),
-    Section(String, usize, usize, Segments),
+    Section(String, usize, usize, bool, Segments),
     InvertedSection(String, Segments),
     Block(String, Segments),
     Partial(String, String, bool, Option<HashMap<String, Segments>>)
@@ -180,9 +180,9 @@ fn render_segment(
                 name, *is_escaped, *starts_new_line,
                 stack, indent
             ),
-        Segment::Section(name, _, _, children) =>
+        Segment::Section(name, _, _, is_seqcheck, children) =>
             render_section(
-                name, children,
+                name, *is_seqcheck, children,
                 stack, indent, partials
             ),
         Segment::InvertedSection(name, children) =>
@@ -250,18 +250,26 @@ fn render_value(
 }
 
 fn render_section(
-    name: &str, children: &Segments,
+    name: &str, is_seqcheck: bool, children: &Segments,
     stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
 ) -> String {
     let mut result = String::new();
     let len = stack.len();
-    if stack.push(name) && !stack.is_falsy() {
-        while stack.current().is_some() {
-            result.push_str(&render_segments(children, stack, indent, partials));
-            stack.next();
+    if stack.push(name) {
+        if is_seqcheck {
+            let must_render = stack.top_is_sequence() && stack.current().is_some();
+            stack.truncate(len);
+            if must_render {
+                result.push_str(&render_segments(children, stack, indent, partials));
+            }
+        } else if stack.top_is_sequence() || !stack.is_falsy() {
+            while stack.current().is_some() {
+                result.push_str(&render_segments(children, stack, indent, partials));
+                stack.next();
+            };
+            stack.truncate(len);
         }
-    };
-    stack.truncate(len);
+    }
     result
 }
 
@@ -328,9 +336,9 @@ fn substitute_segment(segment: &Segment, parameters: &HashMap<String, Segments>)
     match segment {
         Segment::Text(_, _) | Segment::Value(_, _, _) =>
             segment.clone(),
-        Segment::Section(name, after_open, before_close, segments) =>
+        Segment::Section(name, after_open, before_close, is_seqcheck, segments) =>
             Segment::Section(
-                name.to_owned(), *after_open, *before_close, substitute(segments, parameters)
+                name.to_owned(), *after_open, *before_close, *is_seqcheck, substitute(segments, parameters)
             ),
         Segment::InvertedSection(name, segments) =>
             Segment::InvertedSection(
