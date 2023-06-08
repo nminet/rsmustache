@@ -41,10 +41,12 @@ use std::collections::VecDeque;
 
 pub trait Context<'a> {
     /// Get a child context from a mapping, or None if the context is not a mapping.
-    fn child(&'a self, name: &str) -> Option<ContextRef<'a>>;
+    fn child<'b>(&'a self, name: &str) -> Option<ContextRef<'b>>
+    where 'a: 'b;
 
     /// Get children contexts from a list, or None if the context is not a list.
-    fn children(&'a self) -> Option<Vec<ContextRef<'a>>>;
+    fn children<'b>(&'a self) -> Option<Vec<ContextRef<'b>>>
+    where 'a: 'b;
 
     /// Get the rendered text for the context.
     fn value(&self) -> String;

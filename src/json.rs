@@ -3,18 +3,20 @@ pub use serde_json::Value as JsonValue;
 
 
 impl<'a> Context<'a> for JsonValue {
-    fn child(&'a self, name: &str) -> Option<ContextRef<'a>> {
+    fn child<'b>(&'a self, name: &str) -> Option<ContextRef<'b>>
+    where 'a: 'b {
         self.get(name).map(
-            |value| value as ContextRef<'a>
+            |value| value as ContextRef<'b>
         )
     }
     
-    fn children(&'a self) -> Option<Vec<ContextRef<'a>>> {
+    fn children<'b>(&'a self) -> Option<Vec<ContextRef<'b>>>
+    where 'a: 'b {
         match self {
             JsonValue::Array(seq) =>
                 Some(
                     seq.iter()
-                        .map(|value| value as ContextRef<'a>)
+                        .map(|value| value as ContextRef<'b>)
                         .collect::<Vec<_>>()
                 ),
             _ => None
