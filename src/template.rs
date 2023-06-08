@@ -62,7 +62,7 @@ fn find_section(segments: &Segments, path: &str) -> Option<(usize, usize)> {
 }
 
 fn parse<'a>(
-    reader: &mut Reader<'a>, section: Option<&str>
+    reader: &mut Reader<'a>, section: Option<(&str, &str)>
 ) -> Result<(Segments, usize), String> {
     let mut segments = Segments::new();
     let mut before_tag: usize = 0;
@@ -83,7 +83,8 @@ fn parse<'a>(
                     )
                 ),
             Token::Section(name, after_open, is_seqcheck) => {
-                let (children, before_close) = parse(reader, Some(name))?;
+                let qualifier = if is_seqcheck { "?" } else { "" };
+                let (children, before_close) = parse(reader, Some((name, qualifier)))?;
                 segments.push(
                     Segment::Section(
                         name.to_owned(), after_open, before_close, is_seqcheck, children
@@ -94,18 +95,18 @@ fn parse<'a>(
                 segments.push(
                     Segment::InvertedSection(
                         name.to_owned(),
-                        parse(reader, Some(name))?.0
+                        parse(reader, Some((name, &"")))?.0
                     )
                 ),
             Token::Block(name) =>
                 segments.push(
                     Segment::Block(
                         name.to_owned(),
-                        parse(reader, Some(name))?.0
+                        parse(reader, Some((name, &"")))?.0
                     )
                 ),
             Token::Parent(name, is_dynamic, indent) => {
-                let parameters = parse(reader, Some(name))?.0
+                let parameters = parse(reader, Some((name, &"")))?.0
                     .into_iter()
                     .filter_map(|s|
                         match s {
@@ -122,8 +123,8 @@ fn parse<'a>(
                     )
                 )
             },
-            Token::EndSection(name, pos) => {
-                if section != Some(name) {
+            Token::EndSection(name, qualifier, pos) => {
+                if section != Some((name, qualifier)) {
                    return Err(format!("unexpected end of section {}", name));
                 }
                 before_tag = pos;

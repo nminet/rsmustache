@@ -101,7 +101,7 @@ pub(crate) enum Token<'a> {
     Section(&'a str, usize, bool),
     InvertedSection(&'a str),
     Block(&'a str),
-    EndSection(&'a str, usize),
+    EndSection(&'a str, &'a str, usize),
     Partial(&'a str, bool, &'a str),
     Parent(&'a str, bool, &'a str),
     Comment(&'a str),
@@ -120,20 +120,23 @@ impl<'a> Token<'a> {
         if let Some(s) = text.chars().next() {
             match s {
                 '#' => {
-                    let (tag, is_seqcheck) = qualified_tag(text.trim_sigil(), '?');
-                    Token::Section(tag, after_tag, is_seqcheck)
+                    let (name, qualifier) = qualified_tag(text.trim_sigil(), "?");
+                    Token::Section(name, after_tag, !qualifier.is_empty())
                 },
                 '^' => Token::InvertedSection(text.trim_sigil()),
                 '$' => Token::Block(text.trim_sigil()),
-                '/' => Token::EndSection(text.trim_sigil(), before_tag),
+                '/' => {
+                    let (name, qualifier) = qualified_tag(text.trim_sigil(), "*?");
+                    Token::EndSection(name, qualifier, before_tag)
+                },
                 '!' => Token::Comment(text),
                 '<' => {
-                    let (tag, is_dynamic) = qualified_tag(text.trim_sigil(), '*');
-                    Token::Parent(tag, is_dynamic, indent)
+                    let (name, qualifier) = qualified_tag(text.trim_sigil(), "*");
+                    Token::Parent(name, !qualifier.is_empty(), indent)
                 },
                 '>' => {
-                    let (tag, is_dynamic) = qualified_tag(text.trim_sigil(), '*');
-                    Token::Partial(tag, is_dynamic, indent)
+                    let (name, qualifier) = qualified_tag(text.trim_sigil(), "*");
+                    Token::Partial(name, !qualifier.is_empty(), indent)
                 },
                 '=' => {
                     let (od, cd) = match maybe_delimiters(text.trim_sigil()) {
@@ -151,14 +154,13 @@ impl<'a> Token<'a> {
     }
 }
 
-fn qualified_tag(text: &str, qualifier: char) -> (&str, bool) {
-    let is_qualified = text.starts_with(qualifier);
-    let tag = if is_qualified {
-        text[1..].trim_start()
+fn qualified_tag<'a>(text: &'a str, qualifiers: &str) -> (&'a str, &'a str) {
+    let is_qualified = qualifiers.contains(&text[0..1]);
+    if is_qualified {
+        (&text[1..].trim_start(), &text[0..1])
     } else {
-        text
-    };
-    (tag, is_qualified)
+        (text, &"")
+    }
 }
 
 fn maybe_delimiters(text: &str) -> Result<(&str, &str), Token> {
@@ -334,7 +336,7 @@ mod tests {
             "x\n   {{/a}}  \ny",
             vec![
                 Token::Text("x\n", true),
-                Token::EndSection("a", 5),
+                Token::EndSection("a", "", 5),
                 Token::Text("y", true)
             ]
         )
@@ -348,8 +350,8 @@ mod tests {
                 Token::Text("x\n", true),
                 Token::Section("a", 14, false),
                 Token::InvertedSection("x"),
-                Token::EndSection("x", 20),
-                Token::EndSection("a", 26),
+                Token::EndSection("x", "", 20),
+                Token::EndSection("a", "", 26),
                 Token::Text("y", true)
             ]
         )
@@ -364,8 +366,8 @@ mod tests {
                 Token::Section("a", 13, false),
                 Token::InvertedSection("b"),
                 Token::Value("x", false, false),
-                Token::EndSection("b", 27),
-                Token::EndSection("a", 34),
+                Token::EndSection("b", "", 27),
+                Token::EndSection("a", "", 34),
                 Token::Text("  \ny", false)
             ]
         )
@@ -469,9 +471,10 @@ mod tests {
     #[test]
     fn seqcheck_section() {
         expect_sequence(
-            "{{#?a}}",
+            "{{#?a}}{{/?a}}",
             vec![
-                Token::Section("a", 7, true)
+                Token::Section("a", 7, true),
+                Token::EndSection("a", "?", 7)
             ]
         )
     }
