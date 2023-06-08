@@ -35,8 +35,8 @@ impl<'a> Context<'a> for JsonValue {
     /// Falsy indicator.
     /// 
     /// Falsy values in this implementation are:
-    /// - boolean false,
     /// - null
+    /// - boolean false
     /// - empty string
     /// - number 0 (int or float)
     /// 

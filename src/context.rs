@@ -30,14 +30,14 @@ use std::collections::VecDeque;
 /// this is rendered if x is falsy or an empty list
 /// {{/x}}
 /// ```
-/// If **x** is a list, literal text in the section is emitted for each item.
+/// If **x** is a list, the literal text is emitted once for each item.
 /// 
 /// Mustache requires null and false to be falsy. Boolean conversion of
 /// other values are left for implementation to decide (the **is_falsy**
 /// entry in the trait allows controlling this).
 /// 
 /// 
-/// See Implementation section below for examples.
+/// See Implementors section below for examples.
 
 pub trait Context<'a> {
     /// Get a child context from a mapping, or None if the context is not a mapping.

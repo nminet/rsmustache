@@ -3,23 +3,43 @@ use crate::ContextRef;
 use crate::reader::{Reader, Token};
 use crate::context::Stack;
 
-
+/// Represent a compiled Mustache template.
 pub struct Template {
     segments: Segments
 }
 
 impl Template {
+    /// Compile a Mustache template.
+    /// 
+    /// If the compilation fails, return [Result::Err] with a String giving
+    /// information about the failure (TODO: diagnostics should be improved).
+    /// 
+    /// Otherwise return [Result::Ok] with a [Template] ready to render.
     pub fn from(input: &str) -> Result<Self, String> {
         let mut reader = Reader::new(input);
         let segments = parse(&mut reader, None)?.0;
         Ok(Template { segments })
     }
 
+    /// Render [Template] from data supplied by [ContextRef].
+    ///
+    /// Instances of [Template] will always render sucessfully provided the
+    /// [Context](crate::Context) contract is met by the implementation behind [ContextRef].
+    /// As per Mustache specification, items that are not found will be falsy
+    /// in section position and render to an empty string in interpolation
+    /// position.
+    /// 
+    /// As there is no [TemplateStore] all partials will result in context
+    /// misses, producing no text.
     pub fn render(&self, context: ContextRef) -> String {
         let mut stack = Stack::new(context);
         self.render_internal(&mut stack, "", None)
     }
 
+    /// Render [Template] using a [ContextRef] and [TemplateStore].
+    /// 
+    /// If the partial is not found in [TemplateStore], it is handled
+    /// as a context miss (falsy/blank).
     pub fn render_with_partials(
         &self, context: ContextRef, partials: &dyn TemplateStore
     ) -> String {
@@ -27,14 +47,19 @@ impl Template {
         self.render_internal(&mut stack, "", Some(partials))
     }
 
+    /// Provide a range to extract the text of a section.
+    /// 
+    /// The section to locate must be given as a dotted name starting
+    /// from the root of the template. The function returns a pair of values
+    /// that can be used to take a slice from the original text.
+    pub fn section_location(&self, path: &str) -> Option<(usize, usize)> {
+        find_section(&self.segments, path)
+    }
+
     pub(crate) fn render_internal(
         &self, stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>,
     ) -> String {
         render_segments(&self.segments, stack, indent, partials)
-    }
-
-    pub fn section_location(&self, path: &str) -> Option<(usize, usize)> {
-        find_section(&self.segments, path)
     }
 }
 
@@ -378,16 +403,23 @@ fn html_escape(input: String) -> String {
 }
 
 
+/// Template resolver
+/// 
+/// This trait is used to retreive compiled [Template] by name.
 pub trait TemplateStore {
     fn get(&self, name: &str) -> Option<&Template>;
 }
 
 
+/// Pre-compiled [Template] instances.
 pub struct TemplateMap {
     templates: HashMap<String, Template>
 }
 
 impl TemplateMap {
+    /// Create a [TemplateMap] for a map of name to Mustache source code.
+    /// 
+    /// If any of the Mustache template does not compile the result is a [Result::Err].
     pub fn new(input: HashMap<&str, &str>) -> Result<Self, String> {
         let mut templates = HashMap::new();
         for (name, text) in input {

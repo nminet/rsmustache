@@ -32,6 +32,13 @@ impl<'a> Context<'a> for YamlValue {
         }
     }
 
+    /// Falsy indicator.
+    /// 
+    /// Falsy values in this implementation are:
+    /// - null
+    /// - boolean false
+    /// 
+    /// All other values are truthy.
     fn is_falsy(&self) -> bool {
         match self {
             YamlValue::Null => true,
