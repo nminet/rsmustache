@@ -3,15 +3,25 @@ pub use serde_yaml::Value as YamlValue;
 
 
 impl<'a> Context<'a> for YamlValue {
-    fn child<'b>(&'a self, name: &str, _location: Option<(usize, usize)>) -> Option<ContextRef<'b>>
-    where 'a: 'b {
+    fn child<'b>(
+        &'a self,
+        name: &str,
+        _location: Option<(usize, usize)>
+    ) -> Option<ContextRef<'b>>
+    where
+        'a: 'b
+    {
         self.get(name).map(
             |value| value as ContextRef<'b>
         )
     }
     
-    fn children<'b>(&'a self) -> Option<Vec<ContextRef<'b>>>
-    where 'a: 'b {
+    fn children<'b>(
+        &'a self
+    ) -> Option<Vec<ContextRef<'b>>>
+    where
+        'a: 'b
+    {
         match self {
             YamlValue::Sequence(seq) =>
                 Some(

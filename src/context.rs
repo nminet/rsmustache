@@ -44,13 +44,20 @@ pub trait Context<'a> {
     /// 
     /// When the name is in section position, the section text for the current render
     /// is the [start..end] slice in the source that produced the template.
-    fn child<'b>(&'a self, name: &str, section: Option<(usize, usize)>)
-        -> Option<ContextRef<'b>>
-        where 'a: 'b;
+    fn child<'b>(
+        &'a self,
+        name: &str,
+        section: Option<(usize, usize)>
+    ) -> Option<ContextRef<'b>>
+    where
+        'a: 'b;
 
     /// Get children contexts from a list, or None if the context is not a list.
-    fn children<'b>(&'a self) -> Option<Vec<ContextRef<'b>>>
-    where 'a: 'b;
+    fn children<'b>(
+        &'a self
+    ) -> Option<Vec<ContextRef<'b>>>
+    where
+        'a: 'b;
 
     /// Get the rendered text for the context.
     fn value(&self) -> String;
@@ -66,7 +73,7 @@ pub type ContextRef<'a> = &'a dyn Context<'a>;
 struct Frame<'a> {
     // VecDeque to avoid quadratic complexity when removing from start.
     contexts: VecDeque<ContextRef<'a>>,
-    is_sequence: bool
+    is_sequence: bool,
 }
 
 impl<'a> Frame<'a> {
@@ -91,7 +98,7 @@ impl<'a> Frame<'a> {
 
 #[derive(Clone)]
 pub(crate) struct Stack<'a> {
-    frames: Vec<Frame<'a>>
+    frames: Vec<Frame<'a>>,
 }
 
 impl<'a> Stack<'a> {

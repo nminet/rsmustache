@@ -106,7 +106,7 @@ pub(crate) enum Token<'a> {
     Parent(&'a str, bool, &'a str),
     Comment(&'a str),
     Delimiters(&'a str, &'a str),
-    Error(String)
+    Error(String),
 }
 
 impl<'a> Token<'a> {

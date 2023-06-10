@@ -5,7 +5,7 @@ use crate::context::Stack;
 
 /// Represent a compiled Mustache template.
 pub struct Template {
-    segments: Segments
+    segments: Segments,
 }
 
 impl Template {
@@ -153,7 +153,7 @@ enum Segment {
     Section(String, usize, usize, bool, Segments),
     InvertedSection(String, Segments),
     Block(String, Segments),
-    Partial(String, String, bool, Option<HashMap<String, Segments>>)
+    Partial(String, String, bool, Option<HashMap<String, Segments>>),
 }
 
 type Segments = Vec<Segment>;
@@ -381,7 +381,7 @@ pub trait TemplateStore {
 
 /// Pre-compiled [Template] instances.
 pub struct TemplateMap {
-    templates: HashMap<String, Template>
+    templates: HashMap<String, Template>,
 }
 
 impl TemplateMap {
