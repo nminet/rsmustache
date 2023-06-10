@@ -107,6 +107,10 @@ impl<'a> Stack<'a> {
         self.frames.truncate(len);
     }
 
+    pub(crate) fn push(&mut self, name: &str) -> bool {
+        self.push_internal(name, self.len() - 1, false)
+    }
+
     fn push_internal(&mut self, name: &str, mut idx: usize, is_dotted: bool) -> bool {
         if name == "." {
             if let Some(children) = self.children(idx) {
@@ -155,25 +159,6 @@ impl<'a> Stack<'a> {
         }
     }
 
-    pub(crate) fn push(&mut self, name: &str) -> bool {
-        self.push_internal(name, self.len() - 1, false)
-    }
-
-    pub(crate) fn next(&mut self) -> bool {
-        let mut frame = self.frames.pop().unwrap();
-        let more = frame.next();
-        self.frames.push(frame);
-        more
-    }
-
-    pub(crate) fn in_sequence(&self) -> bool {
-        self.frames[self.frames.len() - 1].is_sequence
-    }
-
-    pub(crate) fn current(&self) -> Option<&ContextRef<'a>> {
-        self.frames[self.frames.len() - 1].current()
-    }
-
     fn child(&self, mut idx: usize, name: &str, is_dotted: bool)  -> Option<ContextRef<'a>> {
         if is_dotted {
             idx += 1;
@@ -185,11 +170,12 @@ impl<'a> Stack<'a> {
         self.frames[idx].current()?.children()
     }
 
-    fn value(&self) -> String {
-        match self.current() {
-            Some(context) => context.value(),
-            _ => "".to_owned()
-        }
+    pub(crate) fn in_sequence(&self) -> bool {
+        self.frames[self.frames.len() - 1].is_sequence
+    }
+
+    pub(crate) fn current(&self) -> Option<&ContextRef<'a>> {
+        self.frames[self.frames.len() - 1].current()
     }
 
     pub(crate) fn is_falsy(&self) -> bool {
@@ -197,6 +183,13 @@ impl<'a> Stack<'a> {
             true,
              |context| context.is_falsy()
         )
+    }
+
+    pub(crate) fn next(&mut self) -> bool {
+        let mut frame = self.frames.pop().unwrap();
+        let more = frame.next();
+        self.frames.push(frame);
+        more
     }
 
     pub(crate) fn get(&mut self, name: &str) -> Option<String> {
@@ -211,6 +204,13 @@ impl<'a> Stack<'a> {
             } else {
                 None
             }
+        }
+    }
+
+    fn value(&self) -> String {
+        match self.current() {
+            Some(context) => context.value(),
+            _ => "".to_owned()
         }
     }
 }
