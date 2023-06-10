@@ -24,7 +24,7 @@ impl Template {
     /// Render [Template] from data supplied by [ContextRef].
     ///
     /// Instances of [Template] will always render sucessfully provided the
-    /// [Context](crate::Context) contract is met by the implementation behind [ContextRef].
+    /// [Context](crate::Context) does not block or [panic!].
     /// As per Mustache specification, items that are not found will be falsy
     /// in section position and render to an empty string in interpolation
     /// position.
@@ -47,42 +47,10 @@ impl Template {
         self.render_internal(&mut stack, "", Some(partials))
     }
 
-    /// Provide a range to extract the text of a section.
-    /// 
-    /// The section to locate must be given as a dotted name starting
-    /// from the root of the template. The function returns a pair of values
-    /// that can be used to take a slice from the original text.
-    pub fn section_location(&self, path: &str) -> Option<(usize, usize)> {
-        find_section(&self.segments, path)
-    }
-
     pub(crate) fn render_internal(
         &self, stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>,
     ) -> String {
         render_segments(&self.segments, stack, indent, partials)
-    }
-}
-
-fn find_section(segments: &Segments, path: &str) -> Option<(usize, usize)> {
-    if let Some(section) = segments.iter().find(
-        |segment| match segment {
-            Segment::Section(name, _, _, false, _) =>
-                path == name || path.starts_with(name) && path[name.len()..].starts_with('.'),
-            _ => false
-        }
-    ) {
-        match section {
-            Segment::Section(name, start, end, _, children) => {
-                if path == name {
-                    Some((*start, *end))
-                } else {
-                    find_section(children, &path[name.len() + 1..])                    
-                }
-            },
-            _ => panic!()
-        }
-    } else {
-        None
     }
 }
 
@@ -206,9 +174,9 @@ fn render_segment(
                 name, *is_escaped, *starts_new_line,
                 stack, indent
             ),
-        Segment::Section(name, _, _, is_seqcheck, children) =>
+        Segment::Section(name, start, end, is_seqcheck, children) =>
             render_section(
-                name, *is_seqcheck, children,
+                name, *is_seqcheck, children, *start, *end,
                 stack, indent, partials
             ),
         Segment::InvertedSection(name, children) =>
@@ -276,12 +244,12 @@ fn render_value(
 }
 
 fn render_section(
-    name: &str, is_seqcheck: bool, children: &Segments,
+    name: &str, is_seqcheck: bool, children: &Segments, start: usize, end: usize,
     stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
 ) -> String {
     let mut result = String::new();
     let len = stack.len();
-    if stack.push(name) {
+    if stack.push(name, Some((start, end))) {
         if is_seqcheck {
             let must_render = stack.in_sequence() && stack.current().is_some();
             stack.truncate(len);
@@ -304,7 +272,7 @@ fn render_inverted_section(
     stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
 ) -> String {
     let len = stack.len();
-    let pushed = stack.push(name);
+    let pushed = stack.push(name, None);
     let must_render = !pushed || stack.is_falsy() || stack.current().is_none();
     stack.truncate(len);
     if must_render {

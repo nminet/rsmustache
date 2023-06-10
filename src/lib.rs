@@ -5,13 +5,15 @@
 //! 
 //! This implementation support all core module as well as the optional
 //! inheritance and dynamic-partials modules, passing relevant tests
-//! in [`specs`]. It does NOT support names refering to in-data callables.
+//! in [`specs`].
 //! 
+//! By design there is no mechanism to submit in-data callables.
 //! As the [Context] is a trait it is in principle possible to refer to
-//! pre-defined functions, provided they are available in an ad-hoc
-//! implementation. To support cases where the function needs it,
-//! the [Template] interface provides a function to retreive
-//! the source code of a section.
+//! pre-defined functions (possibly even use a section to feed a script engine)
+//! but this is NOT part of the crate and would have be be provided by an
+//! ad-hoc implementation. To support cases where the function needs it,
+//! the [Context] interface receives indices to locate the code of a section
+//! being rendered.
 //! 
 //! 
 //! # Samples

@@ -3,7 +3,7 @@ pub use serde_yaml::Value as YamlValue;
 
 
 impl<'a> Context<'a> for YamlValue {
-    fn child<'b>(&'a self, name: &str) -> Option<ContextRef<'b>>
+    fn child<'b>(&'a self, name: &str, _location: Option<(usize, usize)>) -> Option<ContextRef<'b>>
     where 'a: 'b {
         self.get(name).map(
             |value| value as ContextRef<'b>

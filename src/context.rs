@@ -41,8 +41,12 @@ use std::collections::VecDeque;
 
 pub trait Context<'a> {
     /// Get a child context from a mapping, or None if the context is not a mapping.
-    fn child<'b>(&'a self, name: &str) -> Option<ContextRef<'b>>
-    where 'a: 'b;
+    /// 
+    /// When the name is in section position, the section text for the current render
+    /// is the [start..end] slice in the source that produced the template.
+    fn child<'b>(&'a self, name: &str, section: Option<(usize, usize)>)
+        -> Option<ContextRef<'b>>
+        where 'a: 'b;
 
     /// Get children contexts from a list, or None if the context is not a list.
     fn children<'b>(&'a self) -> Option<Vec<ContextRef<'b>>>
@@ -107,11 +111,13 @@ impl<'a> Stack<'a> {
         self.frames.truncate(len);
     }
 
-    pub(crate) fn push(&mut self, name: &str) -> bool {
-        self.push_internal(name, self.len() - 1, false)
+    pub(crate) fn push(&mut self, name: &str, location: Option<(usize, usize)>) -> bool {
+        self.push_internal(name, self.len() - 1, false, location)
     }
 
-    fn push_internal(&mut self, name: &str, mut idx: usize, is_dotted: bool) -> bool {
+    fn push_internal(
+        &mut self, name: &str, mut idx: usize, is_dotted: bool, location: Option<(usize, usize)>
+    ) -> bool {
         if name == "." {
             if let Some(children) = self.children(idx) {
                 let frame = Frame::new(children, true);
@@ -122,14 +128,14 @@ impl<'a> Stack<'a> {
         } else if let Some(pos) = name.find(".") {
             let (head, tail) = name.split_at(pos);
             let len = self.len();
-            if self.push_internal(head, idx, is_dotted) && self.push_internal(&tail[1..], idx, true) {
+            if self.push_internal(head, idx, is_dotted, location) && self.push_internal(&tail[1..], idx, true, location) {
                 true
             } else {
                 self.truncate(len);
                 false
             }
 
-        } else if let Some(context) = self.child(idx, name, is_dotted) {
+        } else if let Some(context) = self.child(idx, name, is_dotted, location) {
             let (contexts, is_sequence) = if let Some(children) = context.children() {
                 (children, true)
             } else {
@@ -153,17 +159,19 @@ impl<'a> Stack<'a> {
                     break;
                 }
                 idx -= 1;
-                resolved = self.push_internal(name, idx, false);
+                resolved = self.push_internal(name, idx, false, location);
             };
             resolved
         }
     }
 
-    fn child(&self, mut idx: usize, name: &str, is_dotted: bool)  -> Option<ContextRef<'a>> {
+    fn child(
+        &self, mut idx: usize, name: &str, is_dotted: bool, location: Option<(usize, usize)>
+    ) -> Option<ContextRef<'a>> {
         if is_dotted {
             idx += 1;
         }
-        self.frames[idx].current()?.child(name)
+        self.frames[idx].current()?.child(name, location)
     }
 
     fn children(&self, idx: usize)  -> Option<Vec<ContextRef<'a>>> {
@@ -197,7 +205,7 @@ impl<'a> Stack<'a> {
             Some(self.value())
         } else {
             let len = self.len();
-            if self.push(name) {
+            if self.push(name, None) {
                 let result = self.value();
                 self.truncate(len);
                 Some(result)
@@ -227,8 +235,8 @@ mod test {
         let mut stack = Stack::new(&root);
 
         assert_eq!(stack.get("name").unwrap(), "John Doe");
-        assert!(!stack.push("xxx"));
-        assert!(stack.push("phones"));
+        assert!(!stack.push("xxx", None));
+        assert!(stack.push("phones", None));
         assert_eq!(stack.get("prefix").unwrap(), "+44");
         assert_eq!(stack.get("extension").unwrap(), "1234567");
         assert!(stack.get("aaa").is_none());
@@ -244,8 +252,8 @@ mod test {
         let root = json1();
         let mut stack = Stack::new(&root);
 
-        stack.push("phones");
-        assert!(stack.push("stuff"));
+        stack.push("phones", None);
+        assert!(stack.push("stuff", None));
         assert_eq!(stack.value(), "item1");
         assert!(stack.next());
         assert_eq!(stack.value(), "item2");
@@ -258,7 +266,7 @@ mod test {
         let root = json1();
         let mut stack = Stack::new(&root);
 
-        assert!(stack.push("obj.part2"));
+        assert!(stack.push("obj.part2", None));
         assert_eq!(stack.value(), "yyy");
     }
 
@@ -267,8 +275,8 @@ mod test {
         let root = json1();
         let mut stack = Stack::new(&root);
 
-        stack.push("phones");
-        assert!(stack.push("obj.part2"));
+        stack.push("phones", None);
+        assert!(stack.push("obj.part2", None));
         assert_eq!(stack.value(), "yyy");
     }
 
@@ -277,9 +285,9 @@ mod test {
         let root = json1();
         let mut stack = Stack::new(&root);
 
-        stack.push("phones");
-        assert!(stack.push("obj.part2"));
-        assert!(stack.push("age"));
+        stack.push("phones", None);
+        assert!(stack.push("obj.part2", None));
+        assert!(stack.push("age", None));
     }
 
     #[test]
@@ -287,7 +295,7 @@ mod test {
         let root = json1();
         let mut stack = Stack::new(&root);
 
-        assert!(!stack.push("obj.part1.part2"));
+        assert!(!stack.push("obj.part1.part2", None));
     }
 
     #[test]
@@ -295,8 +303,8 @@ mod test {
         let root = json1();
         let mut stack = Stack::new(&root);
 
-        stack.push("name");
-        assert!(!stack.push("obj.part1.part3"));
+        stack.push("name", None);
+        assert!(!stack.push("obj.part1.part3", None));
         assert_eq!(stack.value(), "John Doe");
     }
 
