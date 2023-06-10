@@ -283,12 +283,12 @@ fn render_section(
     let len = stack.len();
     if stack.push(name) {
         if is_seqcheck {
-            let must_render = stack.top_is_sequence() && stack.current().is_some();
+            let must_render = stack.in_sequence() && stack.current().is_some();
             stack.truncate(len);
             if must_render {
                 result.push_str(&render_segments(children, stack, indent, partials));
             }
-        } else if stack.top_is_sequence() || !stack.is_falsy() {
+        } else if stack.in_sequence() || !stack.is_falsy() {
             while stack.current().is_some() {
                 result.push_str(&render_segments(children, stack, indent, partials));
                 stack.next();

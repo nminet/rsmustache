@@ -62,17 +62,15 @@ pub type ContextRef<'a> = &'a dyn Context<'a>;
 struct Frame<'a> {
     // VecDeque to avoid quadratic complexity when removing from start.
     contexts: VecDeque<ContextRef<'a>>,
-    is_sequence: bool,
-    is_dotted: bool
+    is_sequence: bool
 }
 
 impl<'a> Frame<'a> {
-    fn new(contexts: Vec<ContextRef<'a>>, is_sequence: bool, is_dotted: bool) -> Self {
+    fn new(contexts: Vec<ContextRef<'a>>, is_sequence: bool) -> Self {
         let contexts = VecDeque::from(contexts);
         Frame {
             contexts,
-            is_sequence,
-            is_dotted
+            is_sequence
         }
     }
 
@@ -89,26 +87,15 @@ impl<'a> Frame<'a> {
 
 #[derive(Clone)]
 pub(crate) struct Stack<'a> {
-    frames: Vec<Frame<'a>>,
-    backtrack_depth: usize
+    frames: Vec<Frame<'a>>
 }
 
 impl<'a> Stack<'a> {
     pub(crate) fn new(root: ContextRef<'a>) -> Self {
-        let frame = Frame::new(vec![root], false, false);
+        let frame = Frame::new(vec![root], false);
         let frames = vec![frame];
         Stack { 
-            frames,
-            backtrack_depth: 0
-        }
-    }
-
-    fn backtracking(&self) -> Self {
-        let len = self.frames.len() - 1;
-        let frames = Vec::from(&self.frames[..len]);
-        Stack {
-            frames,
-            backtrack_depth: 1
+            frames
         }
     }
 
@@ -120,65 +107,56 @@ impl<'a> Stack<'a> {
         self.frames.truncate(len);
     }
 
-    fn merge(&mut self, other: Stack<'a>) {
-        let unchanged = self.frames.len() - other.backtrack_depth;
-        self.frames.extend_from_slice(&other.frames[unchanged..]);
-    }
-
-    fn push_dotted(&mut self, name: &str, is_dotted: bool) -> bool {
+    fn push_internal(&mut self, name: &str, mut idx: usize, is_dotted: bool) -> bool {
         if name == "." {
-            if let Some(children) = self.children() {
-                let frame = Frame::new(children, true, is_dotted);
+            if let Some(children) = self.children(idx) {
+                let frame = Frame::new(children, true);
                 self.frames.push(frame);
             };
             true
 
-        } else if let Some(idx) = name.find(".") {
-            let (head, tail) = name.split_at(idx);
+        } else if let Some(pos) = name.find(".") {
+            let (head, tail) = name.split_at(pos);
             let len = self.len();
-            if self.push_dotted(head, true) && self.push_dotted(&tail[1..], true) {
+            if self.push_internal(head, idx, is_dotted) && self.push_internal(&tail[1..], idx, true) {
                 true
             } else {
                 self.truncate(len);
                 false
             }
 
-        } else if let Some(context) = self.child(name) {
+        } else if let Some(context) = self.child(idx, name, is_dotted) {
             let (contexts, is_sequence) = if let Some(children) = context.children() {
                 (children, true)
             } else {
                 (vec![context], false)
             };
-            let frame = Frame::new(contexts, is_sequence, is_dotted);
+            let frame = Frame::new(contexts, is_sequence);
+            if is_dotted {
+                self.truncate(self.len() - 1);
+            }
             self.frames.push(frame);
             true
         
-        } else if is_dotted && self.top().is_dotted {
+        } else if is_dotted {
             // no backtracking while processing dotted name
             false
 
-        } else if self.len() == 1 {
-            // nowhere to backtrack
-            false
-
         } else {
-            let mut resolved: bool;
-            let mut ts = self.backtracking();
+            let mut resolved = false;
             loop {
-                resolved = ts.push(name);
-                if resolved || !ts.down() {
+                if resolved || idx == 0 {
                     break;
                 }
-            }
-            if resolved {
-                self.merge(ts);
-            }
+                idx -= 1;
+                resolved = self.push_internal(name, idx, false);
+            };
             resolved
         }
     }
 
     pub(crate) fn push(&mut self, name: &str) -> bool {
-        self.push_dotted(name, false)
+        self.push_internal(name, self.len() - 1, false)
     }
 
     pub(crate) fn next(&mut self) -> bool {
@@ -188,41 +166,23 @@ impl<'a> Stack<'a> {
         more
     }
 
-    fn down(&mut self) -> bool {
-        let len = self.frames.len();
-        if len > 1 {
-            let mut next_len = len - 1;
-            while self.frames[next_len - 1].is_dotted {
-                next_len -= 1;
-            }
-            self.frames.truncate(next_len);
-            if self.backtrack_depth > 0 {
-                self.backtrack_depth += len - next_len;
-            }
-            true
-        } else {
-            false
-        }
-    }
-
-    fn top(&self) -> &Frame<'a> {
-        self.frames.last().unwrap()
-    }
-
-    pub(crate) fn top_is_sequence(&self) -> bool {
-        self.top().is_sequence
+    pub(crate) fn in_sequence(&self) -> bool {
+        self.frames[self.frames.len() - 1].is_sequence
     }
 
     pub(crate) fn current(&self) -> Option<&ContextRef<'a>> {
-        self.top().current()
+        self.frames[self.frames.len() - 1].current()
     }
 
-    fn child(&self, name: &str)  -> Option<ContextRef<'a>> {
-        self.current()?.child(name)
+    fn child(&self, mut idx: usize, name: &str, is_dotted: bool)  -> Option<ContextRef<'a>> {
+        if is_dotted {
+            idx += 1;
+        }
+        self.frames[idx].current()?.child(name)
     }
 
-    fn children(&self)  -> Option<Vec<ContextRef<'a>>> {
-        self.current()?.children()
+    fn children(&self, idx: usize)  -> Option<Vec<ContextRef<'a>>> {
+        self.frames[idx].current()?.children()
     }
 
     fn value(&self) -> String {
@@ -276,9 +236,7 @@ mod test {
         assert_eq!(stack.get("prefix").unwrap(), "+44");
         assert_eq!(stack.get("extension").unwrap(), "2345678");
         assert!(!stack.next());
-        assert!(stack.down());
         assert_eq!(stack.get("age").unwrap(), "43");
-        assert!(!stack.down());
     }
 
     #[test]
@@ -292,7 +250,6 @@ mod test {
         assert!(stack.next());
         assert_eq!(stack.value(), "item2");
         assert!(!stack.next());
-        assert!(stack.down());
         assert_eq!(stack.get("extension").unwrap(), "1234567");
     }
 
