@@ -42,8 +42,10 @@ use std::collections::VecDeque;
 pub trait Context<'a> {
     /// Get a child context from a mapping, or None if the context is not a mapping.
     /// 
-    /// When the name is in section position, the section text for the current render
-    /// is the [start..end] slice in the source that produced the template.
+    /// The section parameter is [Some] value if and only if the request for the name
+    /// is in section position. In this case it contains a (start,end) pair such that
+    /// the [start..end] slice in the source that produced the template contains
+    /// the text of the section.
     fn child<'b>(
         &'a self,
         name: &str,
