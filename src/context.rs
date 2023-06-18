@@ -61,11 +61,21 @@ pub trait Context<'a> {
     where
         'a: 'b;
 
-    /// Get the rendered text for the context.
-    fn value(&self) -> String;
+    /// Get the contents of the context.
+    /// 
+    /// [ContextValue::Text] is rendered as text.
+    /// [ContextValue::Lambda] is compiled and rendered using the current stack
+    /// and partials.
+    fn value(&self) -> ContextValue;
 
     /// Indicate if the context is falsy.
     fn is_falsy(&self) -> bool;
+}
+
+#[derive(PartialEq, Debug)]
+pub enum ContextValue {
+    Text(String),
+    Lambda(String),
 }
 
 pub type ContextRef<'a> = &'a dyn Context<'a>;
@@ -209,7 +219,7 @@ impl<'a> Stack<'a> {
         more
     }
 
-    pub(crate) fn get(&mut self, name: &str) -> Option<String> {
+    pub(crate) fn get(&mut self, name: &str) -> Option<ContextValue> {
         if name == "." {
             Some(self.value())
         } else {
@@ -224,10 +234,10 @@ impl<'a> Stack<'a> {
         }
     }
 
-    fn value(&self) -> String {
+    pub fn value(&self) -> ContextValue {
         match self.current() {
             Some(context) => context.value(),
-            _ => "".to_owned()
+            _ => ContextValue::Text("".to_owned())
         }
     }
 }
@@ -243,17 +253,17 @@ mod test {
         let root = json1();
         let mut stack = Stack::new(&root);
 
-        assert_eq!(stack.get("name").unwrap(), "John Doe");
+        assert_eq!(stack.get("name"), sct("John Doe"));
         assert!(!stack.push("xxx", None));
         assert!(stack.push("phones", None));
-        assert_eq!(stack.get("prefix").unwrap(), "+44");
-        assert_eq!(stack.get("extension").unwrap(), "1234567");
-        assert!(stack.get("aaa").is_none());
+        assert_eq!(stack.get("prefix"), sct("+44"));
+        assert_eq!(stack.get("extension"), sct("1234567"));
+        assert_eq!(stack.get("aaa"), None);
         assert!(stack.next());
-        assert_eq!(stack.get("prefix").unwrap(), "+44");
-        assert_eq!(stack.get("extension").unwrap(), "2345678");
+        assert_eq!(stack.get("prefix"), sct("+44"));
+        assert_eq!(stack.get("extension"), sct("2345678"));
         assert!(!stack.next());
-        assert_eq!(stack.get("age").unwrap(), "43");
+        assert_eq!(stack.get("age"), sct("43"));
     }
 
     #[test]
@@ -263,11 +273,11 @@ mod test {
 
         stack.push("phones", None);
         assert!(stack.push("stuff", None));
-        assert_eq!(stack.value(), "item1");
+        assert_eq!(stack.value(), ct("item1"));
         assert!(stack.next());
-        assert_eq!(stack.value(), "item2");
+        assert_eq!(stack.value(), ct("item2"));
         assert!(!stack.next());
-        assert_eq!(stack.get("extension").unwrap(), "1234567");
+        assert_eq!(stack.get("extension"), sct("1234567"));
     }
 
     #[test]
@@ -276,7 +286,7 @@ mod test {
         let mut stack = Stack::new(&root);
 
         assert!(stack.push("obj.part2", None));
-        assert_eq!(stack.value(), "yyy");
+        assert_eq!(stack.value(), ct("yyy"));
     }
 
     #[test]
@@ -286,7 +296,7 @@ mod test {
 
         stack.push("phones", None);
         assert!(stack.push("obj.part2", None));
-        assert_eq!(stack.value(), "yyy");
+        assert_eq!(stack.value(), ct("yyy"));
     }
 
     #[test]
@@ -314,7 +324,7 @@ mod test {
 
         stack.push("name", None);
         assert!(!stack.push("obj.part1.part3", None));
-        assert_eq!(stack.value(), "John Doe");
+        assert_eq!(stack.value(), ct("John Doe"));
     }
 
     fn json1() -> JsonValue {
@@ -342,5 +352,13 @@ mod test {
             }
         }"#;
         serde_json::from_str::<JsonValue>(data).unwrap()
+    }
+
+    fn ct(text: &str) -> ContextValue {
+        ContextValue::Text(text.to_owned())
+    }
+
+    fn sct(text: &str) -> Option<ContextValue> {
+        Some(ct(text))
     }
 }

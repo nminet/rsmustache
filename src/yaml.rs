@@ -1,27 +1,17 @@
-use crate::{Context, ContextRef};
+use crate::{Context, ContextValue, ContextRef};
 pub use serde_yaml::Value as YamlValue;
 
 
 impl<'a> Context<'a> for YamlValue {
-    fn child<'b>(
-        &'a self,
-        name: &str,
-        _location: Option<(usize, usize)>
-    ) -> Option<ContextRef<'b>>
-    where
-        'a: 'b
-    {
+    fn child<'b>(&'a self, name: &str, _location: Option<(usize, usize)>) -> Option<ContextRef<'b>>
+    where 'a: 'b {
         self.get(name).map(
             |value| value as ContextRef<'b>
         )
     }
     
-    fn children<'b>(
-        &'a self
-    ) -> Option<Vec<ContextRef<'b>>>
-    where
-        'a: 'b
-    {
+    fn children<'b>(&'a self) -> Option<Vec<ContextRef<'b>>>
+    where 'a: 'b {
         match self {
             YamlValue::Sequence(seq) =>
                 Some(
@@ -33,13 +23,14 @@ impl<'a> Context<'a> for YamlValue {
         }
     }
 
-    fn value(&self) -> String {
-        match self {
+    fn value(&self) -> ContextValue {
+        let text = match self {
             YamlValue::String(s) => s.clone(),
             YamlValue::Number(n) => n.to_string(),
             YamlValue::Bool(b) => b.to_string(),
             _ => "".to_owned()
-        }
+        };
+        ContextValue::Text(text)
     }
 
     /// Falsy indicator.

@@ -90,6 +90,10 @@ impl<'a> Reader<'a> {
         self.close_delimiter = cd;
         self.after_standalone = self.pos + self.input[self.pos..].span_standalone(od, cd);
     }
+
+    pub(crate) fn delimiters(&self) -> (String, String) {
+        (self.open_delimiter.to_owned(), self.close_delimiter.to_owned())
+    }
 }
 
 

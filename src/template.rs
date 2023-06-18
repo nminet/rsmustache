@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use crate::ContextRef;
+
+use crate::{ContextRef, ContextValue};
 use crate::reader::{Reader, Token};
 use crate::context::Stack;
 
@@ -63,57 +64,45 @@ fn parse<'a>(
         match token {
             Token::Text(text, starts_new_line) =>
                 segments.push(
-                    Segment::Text(
-                        text.to_owned(),
-                        starts_new_line
-                    )
+                    Segment::Text(text.to_owned(), starts_new_line)
                 ),
             Token::Value(name, is_escaped, starts_new_line) =>
                 segments.push(
-                    Segment::Value(
-                        name.to_owned(),
-                        is_escaped, starts_new_line
-                    )
+                    Segment::Value(name.to_owned(), is_escaped, starts_new_line)
                 ),
             Token::Section(name, after_open, is_seqcheck) => {
                 let qualifier = if is_seqcheck { "?" } else { "" };
+                let (od, cd) = reader.delimiters();
                 let (children, before_close) = parse(reader, Some((name, qualifier)))?;
                 segments.push(
-                    Segment::Section(
-                        name.to_owned(), after_open, before_close, is_seqcheck, children
-                    )
+                    Segment::Section(name.to_owned(), after_open, before_close, is_seqcheck, od, cd, children)
                 )
             },
-            Token::InvertedSection(name) =>
+            Token::InvertedSection(name) => {
+                let (children, _) = parse(reader, Some((name, &"")))?;
                 segments.push(
-                    Segment::InvertedSection(
-                        name.to_owned(),
-                        parse(reader, Some((name, &"")))?.0
-                    )
-                ),
-            Token::Block(name) =>
+                    Segment::InvertedSection(name.to_owned(), children)
+                )
+            },
+            Token::Block(name) => {
+                let (children, _) = parse(reader, Some((name, &"")))?;
                 segments.push(
-                    Segment::Block(
-                        name.to_owned(),
-                        parse(reader, Some((name, &"")))?.0
-                    )
-                ),
+                    Segment::Block(name.to_owned(), children)
+                )
+            },
             Token::Parent(name, is_dynamic, indent) => {
-                let parameters = parse(reader, Some((name, &"")))?.0
+                let qualifier = if is_dynamic { "*" } else { "" };
+                let (children, _) = parse(reader, Some((name, qualifier)))?;
+                let parameters = children
                     .into_iter()
-                    .filter_map(|s|
-                        match s {
+                    .filter_map(|segment|
+                        match segment {
                             Segment::Block(name, children) => Some((name, children)),
                             _ => None
                         }
                     ).collect::<HashMap<_, _>>();
                 segments.push(
-                    Segment::Partial(
-                        name.to_owned(),
-                        indent.to_owned(),
-                        is_dynamic,
-                        Some(parameters)
-                    )
+                    Segment::Partial(name.to_owned(), indent.to_owned(), is_dynamic, Some(parameters))
                 )
             },
             Token::EndSection(name, qualifier, pos) => {
@@ -125,12 +114,7 @@ fn parse<'a>(
             },
             Token::Partial(name, is_dynamic, indent) =>
                 segments.push(
-                    Segment::Partial(
-                        name.to_owned(),
-                        indent.to_owned(),
-                        is_dynamic,
-                        None
-                    )
+                    Segment::Partial(name.to_owned(), indent.to_owned(), is_dynamic, None)
                 ),
             Token::Delimiters(od, cd) => {
                 reader.set_delimiters(od, cd);
@@ -150,7 +134,7 @@ fn parse<'a>(
 enum Segment {
     Text(String, bool),
     Value(String, bool, bool),
-    Section(String, usize, usize, bool, Segments),
+    Section(String, usize, usize, bool, String, String, Segments),
     InvertedSection(String, Segments),
     Block(String, Segments),
     Partial(String, String, bool, Option<HashMap<String, Segments>>),
@@ -172,11 +156,11 @@ fn render_segment(
         Segment::Value(name, is_escaped, starts_new_line) =>
             render_value(
                 name, *is_escaped, *starts_new_line,
-                stack, indent
+                stack, indent, partials
             ),
-        Segment::Section(name, start, end, is_seqcheck, children) =>
+        Segment::Section(name, start, end, is_seqcheck, od, cd, children) =>
             render_section(
-                name, *is_seqcheck, children, *start, *end,
+                name, *is_seqcheck, od, cd, children, *start, *end,
                 stack, indent, partials
             ),
         Segment::InvertedSection(name, children) =>
@@ -226,16 +210,23 @@ fn render_text(
 
 fn render_value(
     name: &str, is_escaped: bool, starts_new_line: bool,
-    stack: &mut Stack, indent: &str
+    stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
 ) -> String {
     let value = if starts_new_line && !indent.is_empty() {
         let mut value = indent.to_owned();
-        if let Some(text) = stack.get(name) {
-            value.push_str(&text);
-        }
+        let text = match stack.get(name) {
+            Some(ContextValue::Text(text)) => text.to_owned(),
+            Some(ContextValue::Lambda(lambda)) => render_lambda(&lambda, None, stack, indent, partials),
+            _ => "".to_owned()
+        };
+        value.push_str(&text);
         value
     } else {
-        stack.get(name).unwrap_or_default()
+        match stack.get(name) {
+            Some(ContextValue::Text(text)) => text.to_owned(),
+            Some(ContextValue::Lambda(lambda)) => render_lambda(&lambda, None, stack, indent, partials),
+            _ => "".to_owned()
+        }
     };
     match is_escaped {
         true => html_escape(value),
@@ -244,7 +235,7 @@ fn render_value(
 }
 
 fn render_section(
-    name: &str, is_seqcheck: bool, children: &Segments, start: usize, end: usize,
+    name: &str, is_seqcheck: bool, od: &str, cd: &str, children: &Segments, start: usize, end: usize,
     stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
 ) -> String {
     let mut result = String::new();
@@ -256,6 +247,11 @@ fn render_section(
             if must_render {
                 result.push_str(&render_segments(children, stack, indent, partials));
             }
+        } else if let ContextValue::Lambda(lambda) = stack.value() {
+            let delimiters = Some((od, cd));
+            result.push_str(
+                &render_lambda(&lambda, delimiters, stack, indent, partials)
+            );
         } else if stack.in_sequence() || !stack.is_falsy() {
             while stack.current().is_some() {
                 result.push_str(&render_segments(children, stack, indent, partials));
@@ -265,6 +261,22 @@ fn render_section(
         }
     }
     result
+}
+
+fn render_lambda(
+    lambda: &str, delimiters: Option<(&str, &str)>,
+    stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
+) -> String {
+    let mut reader = Reader::new(lambda);
+    if let Some((od, cd)) = delimiters {
+        if od !="{{" || cd !="}}" {
+            reader.set_delimiters(od, cd);
+        }
+    };
+    match parse(&mut reader, None) {
+        Ok((segments, _)) => render_segments(&segments, stack, indent, partials),
+        Err(_) => "".to_owned()
+    }
 }
 
 fn render_inverted_section(
@@ -288,7 +300,10 @@ fn render_partial(
 ) -> String {
     if let Some(store) = partials {
         let maybe_template = if is_dynamic {
-            stack.get(name).map_or(None, |it| store.get(&it))
+            match stack.get(name) {
+                Some(ContextValue::Text(name)) => store.get(&name),
+                _ => None
+            }
         } else {
             store.get(name)
         };
@@ -330,9 +345,9 @@ fn substitute_segment(segment: &Segment, parameters: &HashMap<String, Segments>)
     match segment {
         Segment::Text(_, _) | Segment::Value(_, _, _) =>
             segment.clone(),
-        Segment::Section(name, after_open, before_close, is_seqcheck, segments) =>
+        Segment::Section(name, after_open, before_close, is_seqcheck, od, cd, segments) =>
             Segment::Section(
-                name.to_owned(), *after_open, *before_close, *is_seqcheck, substitute(segments, parameters)
+                name.to_owned(), *after_open, *before_close, *is_seqcheck, od.clone(), cd.clone(), substitute(segments, parameters)
             ),
         Segment::InvertedSection(name, segments) =>
             Segment::InvertedSection(
