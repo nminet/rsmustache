@@ -358,15 +358,10 @@ fn substitute_segment(segment: &Segment, parameters: &HashMap<String, Segments>)
             );
             Segment::Block(name.to_owned(), updated)
         },
-        Segment::Partial(name, indent, is_dynamic, partial_parameters) => {
-            let updated = if let Some(partial_parameters) = partial_parameters {
-                let mut updated = HashMap::new();
-                updated.extend(partial_parameters.clone().into_iter());
-                updated.extend(parameters.clone().into_iter());
-                Some(updated)
-            } else {
-                None
-            };
+        Segment::Partial(name, indent, is_dynamic, current) => {
+            let updated = current.clone().map(|initial| {
+                initial.into_iter().chain(parameters.clone().into_iter()).collect()
+            });
             Segment::Partial(name.to_owned(), indent.to_owned(), *is_dynamic, updated)
         }
     }
