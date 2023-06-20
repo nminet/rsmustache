@@ -269,9 +269,7 @@ fn render_lambda(
 ) -> String {
     let mut reader = Reader::new(lambda);
     if let Some((od, cd)) = delimiters {
-        if od !="{{" || cd !="}}" {
-            reader.set_delimiters(od, cd);
-        }
+        reader.set_delimiters(od, cd);
     };
     match parse(&mut reader, None) {
         Ok((segments, _)) => render_segments(&segments, stack, indent, partials),

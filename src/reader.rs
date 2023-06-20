@@ -86,9 +86,11 @@ impl<'a> Reader<'a> {
     }
 
     pub(crate) fn set_delimiters<'s: 'a>(&mut self, od: &'s str, cd: &'s str) {
-        self.open_delimiter = od;
-        self.close_delimiter = cd;
-        self.after_standalone = self.pos + self.input[self.pos..].span_standalone(od, cd);
+        if od != self.open_delimiter || cd != self.close_delimiter {
+            self.open_delimiter = od;
+            self.close_delimiter = cd;
+            self.after_standalone = self.pos + self.input[self.pos..].span_standalone(od, cd);
+        }
     }
 
     pub(crate) fn delimiters(&self) -> (String, String) {
