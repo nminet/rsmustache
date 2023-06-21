@@ -6,7 +6,7 @@ use mustache::{
 
 use std::{fs, collections::HashMap, cell::RefCell, rc::Rc};
 use serde::Deserialize;
-use serde_yaml::{Mapping as YamlMapping};
+use serde_yaml::Mapping as YamlMapping;
 
 
 #[test]
