@@ -45,7 +45,8 @@ use crate::context::{Context, ContextRef, ContextValue};
 ///     )),
 ///     (String::from("wrapped"), MapsAndLists::lambda1(
 ///         |s| format!("[{}]", s),
-///         &source)),
+///         &source
+///     )),
 ///   ].into_iter().collect::<HashMap<_, _>>()
 /// );
 /// let result = template.render(&context);
@@ -129,28 +130,26 @@ impl MapsAndLists {
     }
 }
 
-impl<'a> Context<'a> for MapsAndLists{
-    fn child<'b>(&'a self, name: &str, section: Option<(usize, usize)>) -> Option<ContextRef<'b>>
-    where 'a: 'b {
+impl Context for MapsAndLists{
+    fn child(&self, name: &str, section: Option<(usize, usize)>) -> Option<ContextRef> {
         match self {
             MapsAndLists(Value::Mapping(obj)) =>
                 obj.get(name).map(
                     |it| {
                         it.process_lambda(&section);
-                        it as ContextRef<'b>
+                        it as ContextRef
                     }
                 ),
             _ => None
         }
     }
 
-    fn children<'b>(&'a self) -> Option<Vec<ContextRef<'b>>>
-    where 'a: 'b {
+    fn children(&self) -> Option<Vec<ContextRef>> {
         match self {
             MapsAndLists(Value::Sequence(seq)) =>
                 Some(
                     seq.iter().map(
-                        |it| it as ContextRef<'b>
+                        |it| it as ContextRef
                     ).collect::<Vec<_>>()
                 ),
             _ => None

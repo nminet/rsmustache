@@ -10,7 +10,7 @@ use std::collections::VecDeque;
 /// data, providing a view on internal data structures. To support this, functions
 /// in the trait return context as
 /// ```text
-/// type ContextRef<'a> = &'a dyn Context<'a>
+/// type ContextRef<'a> = &'a dyn Context
 /// ```
 ///
 /// 
@@ -39,27 +39,18 @@ use std::collections::VecDeque;
 /// 
 /// See Implementors section below for examples.
 
-pub trait Context<'a> {
+pub trait Context {
     /// Get a child context from a mapping, or None if the context is not a mapping.
     /// 
     /// The section parameter is [Some] value if and only if the request for the name
     /// is in section position. In this case it contains a (start,end) pair such that
     /// the [start..end] slice in the source that produced the template contains
     /// the text of the section.
-    fn child<'b>(
-        &'a self,
-        name: &str,
-        section: Option<(usize, usize)>
-    ) -> Option<ContextRef<'b>>
-    where
-        'a: 'b;
+    fn child(&self, name: &str, section: Option<(usize, usize)>) -> Option<ContextRef>;
+
 
     /// Get children contexts from a list, or None if the context is not a list.
-    fn children<'b>(
-        &'a self
-    ) -> Option<Vec<ContextRef<'b>>>
-    where
-        'a: 'b;
+    fn children(&self) -> Option<Vec<ContextRef>>;
 
     /// Get the contents of the context.
     /// 
@@ -78,7 +69,7 @@ pub enum ContextValue {
     Lambda(String),
 }
 
-pub type ContextRef<'a> = &'a dyn Context<'a>;
+pub type ContextRef<'a> = &'a dyn Context;
 
 
 #[derive(Clone)]

@@ -2,21 +2,19 @@ use crate::{Context, ContextValue, ContextRef};
 pub use serde_yaml::Value as YamlValue;
 
 
-impl<'a> Context<'a> for YamlValue {
-    fn child<'b>(&'a self, name: &str, _location: Option<(usize, usize)>) -> Option<ContextRef<'b>>
-    where 'a: 'b {
+impl Context for YamlValue {
+    fn child(&self, name: &str, _location: Option<(usize, usize)>) -> Option<ContextRef> {
         self.get(name).map(
-            |value| value as ContextRef<'b>
+            |value| value as ContextRef
         )
     }
     
-    fn children<'b>(&'a self) -> Option<Vec<ContextRef<'b>>>
-    where 'a: 'b {
+    fn children(&self) -> Option<Vec<ContextRef>> {
         match self {
             YamlValue::Sequence(seq) =>
                 Some(
                     seq.iter()
-                        .map(|value| value as ContextRef<'b>)
+                        .map(|value| value as ContextRef)
                         .collect::<_>()
                 ),
             _ => None
