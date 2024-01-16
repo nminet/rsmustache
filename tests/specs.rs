@@ -14,7 +14,8 @@ fn spec_tests() -> Result<(), String> {
         "inverted",
         "delimiters",
         "partials",
-        "~dynamic-names"
+        "~dynamic-names",
+        "~inheritance"
     ].iter().fold(
         Result::Ok(()),
         |acc, name| match (acc, run_spec_file(name, false)) {
