@@ -8,15 +8,11 @@ impl Context for JsonValue {
             |value| value as ContextRef
         )
     }
-    
-    fn children(&self) -> Option<Vec<ContextRef>> {
+
+    fn children(&self) -> Option<Box<dyn Iterator<Item = ContextRef> + '_>> {
         match self {
-            JsonValue::Array(seq) =>
-                Some(
-                    seq.iter()
-                        .map(|value| value as ContextRef)
-                        .collect::<Vec<_>>()
-                ),
+            JsonValue::Array(seq) => 
+                Some(Box::new(seq.iter().map(|value| value as ContextRef))),
             _ => None
         }
     }
@@ -44,9 +40,17 @@ impl Context for JsonValue {
         match self {
             JsonValue::Null => true,
             JsonValue::String(s) => s.is_empty(),
-            JsonValue::Number(n) =>
-                n.is_u64() && n.as_u64().unwrap() == 0 ||
-                n.is_f64() && n.as_f64().unwrap() == 0f64,
+            JsonValue::Number(n) => {
+                if let Some(u) = n.as_u64() {
+                    u == 0
+                } else if let Some(f) = n.as_f64() {
+                    f == 0.0
+                } else if let Some(i) = n.as_i64() {
+                    i == 0
+                } else {
+                    false
+                }
+            },
             JsonValue::Bool(b) => !*b,
             _ => false
         }

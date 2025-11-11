@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 /// Adapter to render an external type into a Mustache template.
 /// 
 /// The trait is used by the rendering engine to obtain context data and navigate
@@ -14,23 +12,23 @@ use std::collections::VecDeque;
 /// ```
 ///
 /// 
-/// The Mustache template system - for the purpose of rendering - assume the context
+/// The Mustache template system - for the purpose of rendering - assumes the context
 /// is one of
 /// - a named text value
 /// - a mapping of string to context
-/// - a list of contexts
+/// - an iterator over a sequence of contexts
 /// - a boolean value
 /// 
 /// Any context can be used as a section.
 /// ```text
 /// {{#x}}
-/// this is rendered if x is not falsy or a non-empty list
+/// this is rendered if x is not falsy or a non-empty sequence
 /// {{/x}}
 /// {{^x}}
-/// this is rendered if x is falsy or an empty list
+/// this is rendered if x is falsy or an empty sequence
 /// {{/x}}
 /// ```
-/// If **x** is a list, the literal text is emitted once for each item.
+/// If **x** is a sequence, the content is rendered once for each item.
 /// 
 /// Mustache requires null and false to be falsy. Boolean conversion of
 /// other values are left for implementation to decide (the **is_falsy**
@@ -38,7 +36,6 @@ use std::collections::VecDeque;
 /// 
 /// 
 /// See Implementors section below for examples.
-
 pub trait Context {
     /// Get a child context from a mapping, or None if the context is not a mapping.
     /// 
@@ -48,9 +45,8 @@ pub trait Context {
     /// the text of the section.
     fn child(&self, name: &str, section: Option<(usize, usize)>) -> Option<ContextRef>;
 
-
-    /// Get children contexts from a list, or None if the context is not a list.
-    fn children(&self) -> Option<Vec<ContextRef>>;
+    /// Get an iterator over a sequence of children contexts, or None if the context is not a sequence.
+    fn children(&self) -> Option<ContextRefIterator>;
 
     /// Get the contents of the context.
     /// 
@@ -70,46 +66,54 @@ pub enum ContextValue {
 }
 
 pub type ContextRef<'a> = &'a dyn Context;
+pub type ContextRefIterator<'a> = Box<dyn Iterator<Item = ContextRef<'a>> + 'a>;
 
-
-#[derive(Clone)]
+    
 struct Frame<'a> {
-    // VecDeque to avoid quadratic complexity when removing from start.
-    contexts: VecDeque<ContextRef<'a>>,
-    is_sequence: bool,
+    current: Option<ContextRef<'a>>,
+    iterator: Option<ContextRefIterator<'a>>,
 }
 
 impl<'a> Frame<'a> {
-    fn new(contexts: Vec<ContextRef<'a>>, is_sequence: bool) -> Self {
-        let contexts = VecDeque::from(contexts);
+    fn new_from_single(context: ContextRef<'a>) -> Self {
         Frame {
-            contexts,
-            is_sequence
+            current: Some(context),
+            iterator: None
+        }
+    }
+
+    fn new_from_iterator(mut iterator: ContextRefIterator<'a>) -> Self {
+        Frame {
+            current: iterator.next(),
+            iterator: Some(iterator)
         }
     }
 
     fn current(&self) -> Option<&ContextRef<'a>> {
-        self.contexts.front()
+        self.current.as_ref()
     }
 
     fn next(&mut self) -> bool {
-        self.contexts.pop_front();
-        !self.contexts.is_empty()
+        if let Some(mut iterator) = self.iterator.take() {
+            self.current = iterator.next();
+            self.iterator = Some(iterator);
+        } else {
+            self.current = None;
+        }
+        self.current.is_some()
     }
 }
 
 
-#[derive(Clone)]
 pub(crate) struct Stack<'a> {
     frames: Vec<Frame<'a>>,
 }
 
 impl<'a> Stack<'a> {
     pub(crate) fn new(root: ContextRef<'a>) -> Self {
-        let frame = Frame::new(vec![root], false);
-        let frames = vec![frame];
-        Stack { 
-            frames
+        let frame = Frame::new_from_single(root);
+        Stack {
+            frames: vec![frame]
         }
     }
 
@@ -129,9 +133,12 @@ impl<'a> Stack<'a> {
         &mut self, name: &str, mut idx: usize, is_dotted: bool, location: Option<(usize, usize)>
     ) -> bool {
         if name == "." {
-            if let Some(children) = self.children(idx) {
-                let frame = Frame::new(children, true);
-                self.frames.push(frame);
+            let current = self.frames[idx].current().copied();
+            if let Some(context) = current {
+                if let Some(iterator) = context.children() {
+                    let frame = Frame::new_from_iterator(iterator);
+                    self.frames.push(frame);
+                }
             };
             true
 
@@ -146,12 +153,11 @@ impl<'a> Stack<'a> {
             }
 
         } else if let Some(context) = self.child(idx, name, is_dotted, location) {
-            let (contexts, is_sequence) = if let Some(children) = context.children() {
-                (children, true)
+            let frame = if let Some(iterator) = context.children() {
+                Frame::new_from_iterator(iterator)
             } else {
-                (vec![context], false)
+                Frame::new_from_single(context)
             };
-            let frame = Frame::new(contexts, is_sequence);
             if is_dotted {
                 self.truncate(self.len() - 1);
             }
@@ -184,12 +190,10 @@ impl<'a> Stack<'a> {
         self.frames[idx].current()?.child(name, location)
     }
 
-    fn children(&self, idx: usize)  -> Option<Vec<ContextRef<'a>>> {
-        self.frames[idx].current()?.children()
-    }
+
 
     pub(crate) fn in_sequence(&self) -> bool {
-        self.frames[self.frames.len() - 1].is_sequence
+        self.frames[self.frames.len() - 1].iterator.is_some()
     }
 
     pub(crate) fn current(&self) -> Option<&ContextRef<'a>> {
@@ -204,10 +208,13 @@ impl<'a> Stack<'a> {
     }
 
     pub(crate) fn next(&mut self) -> bool {
-        let mut frame = self.frames.pop().unwrap();
-        let more = frame.next();
-        self.frames.push(frame);
-        more
+        if let Some(mut frame) = self.frames.pop() {
+            let more = frame.next();
+            self.frames.push(frame);
+            more
+        } else {
+            false
+        }
     }
 
     pub(crate) fn get(&mut self, name: &str) -> Option<ContextValue> {
@@ -316,6 +323,30 @@ mod test {
         stack.push("name", None);
         assert!(!stack.push("obj.part1.part3", None));
         assert_eq!(stack.value(), ct("John Doe"));
+    }
+
+    #[test]
+    fn edge_case_safety() {
+        // Test edge cases that could previously cause panics
+        
+        // Test empty stack next() - should not panic
+        let root = json1();
+        let mut stack = Stack::new(&root);
+        // Clear all frames to test empty stack
+        stack.truncate(0);
+        // This should return false, not panic
+        assert!(!stack.next());
+        
+        // Test zero numbers in JSON are falsy
+        let zero_int = serde_json::json!(0);
+        assert!(zero_int.is_falsy());
+        
+        let zero_float = serde_json::json!(0.0);
+        assert!(zero_float.is_falsy());
+        
+        // Test negative zero
+        let neg_zero = serde_json::json!(-0.0);
+        assert!(neg_zero.is_falsy());
     }
 
     fn json1() -> JsonValue {

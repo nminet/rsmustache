@@ -55,8 +55,8 @@ impl Template {
     }
 }
 
-fn parse<'a>(
-    reader: &mut Reader<'a>, section: Option<(&str, &str)>
+fn parse(
+    reader: &mut Reader<'_>, section: Option<(&str, &str)>
 ) -> Result<(Segments, usize), String> {
     let mut segments = Segments::new();
     let mut before_tag: usize = 0;
@@ -79,13 +79,13 @@ fn parse<'a>(
                 )
             },
             Token::InvertedSection(name) => {
-                let (children, _) = parse(reader, Some((name, &"")))?;
+                let (children, _) = parse(reader, Some((name, "")))?;
                 segments.push(
                     Segment::InvertedSection(name.to_owned(), children)
                 )
             },
             Token::Block(name) => {
-                let (children, _) = parse(reader, Some((name, &"")))?;
+                let (children, _) = parse(reader, Some((name, "")))?;
                 segments.push(
                     Segment::Block(name.to_owned(), children)
                 )
@@ -360,7 +360,7 @@ fn substitute_segment(segment: &Segment, parameters: &HashMap<String, Segments>)
         },
         Segment::Partial(name, indent, is_dynamic, current) => {
             let updated = current.clone().map(|initial| {
-                initial.into_iter().chain(parameters.clone().into_iter()).collect()
+                initial.into_iter().chain(parameters.clone()).collect()
             });
             Segment::Partial(name.to_owned(), indent.to_owned(), *is_dynamic, updated)
         }

@@ -14,7 +14,7 @@ impl<'a> Reader<'a> {
         let close_delimiter = "}}";
         let after_standalone = input.span_standalone(open_delimiter, close_delimiter);
         let pos = if after_standalone > 0 {
-            input.find(open_delimiter).unwrap()
+            input.find(open_delimiter).unwrap_or(0)
         } else {
             0
         };
@@ -32,7 +32,7 @@ impl<'a> Reader<'a> {
             None
         } else {
             let tail = &self.input[self.pos..];
-            let token = if tail.starts_with(&self.open_delimiter) {
+            let token = if tail.starts_with(self.open_delimiter) {
                 self.read_tag(tail)
             } else {
                 self.read_text(tail)
@@ -43,14 +43,14 @@ impl<'a> Reader<'a> {
 
     fn read_text(&mut self, tail: &'a str) -> Token<'a> {
         let starts_new_line = self.pos == 0 || &self.input[self.pos - 1.. self.pos] == "\n";
-        let (text, after_text, after_standalone) = tail.span_text(&self.open_delimiter, &self.close_delimiter);
+        let (text, after_text, after_standalone) = tail.span_text(self.open_delimiter, self.close_delimiter);
         self.after_standalone = self.pos + after_standalone;
         self.pos += after_text;
-        Token::text(&text, starts_new_line)
+        Token::text(text, starts_new_line)
     }
 
     fn read_tag(&mut self, tail: &'a str) -> Token<'a> {
-        if let Some((text, after_tag)) = tail.span_tag(&self.open_delimiter, &self.close_delimiter) {
+        if let Some((text, after_tag)) = tail.span_tag(self.open_delimiter, self.close_delimiter) {
             let start_of_line = if let Some(p) = self.input[..self.pos].rfind('\n') {
                 p + 1
             } else {
@@ -161,17 +161,20 @@ impl<'a> Token<'a> {
 }
 
 fn qualified_tag<'a>(text: &'a str, qualifiers: &str) -> (&'a str, &'a str) {
+    if text.is_empty() {
+        return (text, "");
+    }
     let is_qualified = qualifiers.contains(&text[0..1]);
     if is_qualified {
-        (&text[1..].trim_start(), &text[0..1])
+        (text[1..].trim_start(), &text[0..1])
     } else {
-        (text, &"")
+        (text, "")
     }
 }
 
 fn maybe_delimiters(text: &str) -> Result<(&str, &str), Token> {
     let words = text.split_ascii_whitespace().collect::<Vec<_>>();
-    if text.find("=").is_some() || words.len() != 2 {
+    if text.contains("=") || words.len() != 2 {
         Err(Token::Error("invalid delimiters tag".to_owned()))
     } else {
         Ok((words[0], words[1]))
@@ -222,10 +225,10 @@ impl ReaderStringOps for str {
                     (self[odl..].find(&close_delimiter), close_delimiter.len())
                 },
                 _ => {
-                    (self[odl..].find(&close_delimiter), close_delimiter.len())
+                    (self[odl..].find(close_delimiter), close_delimiter.len())
                 }
             } {
-                Some((&self[odl..odl + p].trim(), odl + p + cdl))
+                Some((self[odl..odl + p].trim(), odl + p + cdl))
             } else {
                 None
             }
@@ -301,9 +304,12 @@ impl ReaderStringOps for str {
 
     fn is_standalone_open(&self, open_delimiter: &str) -> bool {
         static STRIPPABLE_SIGILS: &str = "#^/>=!$<";
-        self.starts_with(open_delimiter)
-            && open_delimiter.len() < self.len()
-            && STRIPPABLE_SIGILS.contains(&self[open_delimiter.len()..].trim()[0..1])
+        if self.starts_with(open_delimiter) && open_delimiter.len() < self.len() {
+            let trimmed = self[open_delimiter.len()..].trim();
+            !trimmed.is_empty() && STRIPPABLE_SIGILS.contains(&trimmed[0..1])
+        } else {
+            false
+        }
     }
 
     fn trim_sigil(&self) -> &str {

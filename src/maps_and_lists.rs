@@ -53,7 +53,6 @@ use crate::context::{Context, ContextRef, ContextValue};
 /// 
 /// assert_eq!(result, "[hello john, paul, jacques]")
 /// ```
-
 pub struct MapsAndLists(Value);
 
 enum Value {
@@ -111,7 +110,7 @@ impl MapsAndLists {
     where T: Fn(&str) -> String + 'static {
         MapsAndLists(Value::Lambda1(
             Box::new(fun),
-            Rc::clone(&template),
+            Rc::clone(template),
             RefCell::new("".to_owned())
         ))
     }
@@ -122,8 +121,12 @@ impl MapsAndLists {
                 result.replace(lambda());
             },
             MapsAndLists(Value::Lambda1(lambda, template, result)) => {
-                let (start, end) = section.unwrap();
-                result.replace(lambda(&template[start..end]));
+                if let Some((start, end)) = section {
+                    result.replace(lambda(&template[*start..*end]));
+                } else {
+                    // If no section is provided, use the entire template
+                    result.replace(lambda(template));
+                }
             },
             _ => {}
         };
@@ -144,14 +147,10 @@ impl Context for MapsAndLists{
         }
     }
 
-    fn children(&self) -> Option<Vec<ContextRef>> {
+    fn children(&self) -> Option<Box<dyn Iterator<Item = ContextRef> + '_>> {
         match self {
             MapsAndLists(Value::Sequence(seq)) =>
-                Some(
-                    seq.iter().map(
-                        |it| it as ContextRef
-                    ).collect::<Vec<_>>()
-                ),
+                Some(Box::new(seq.iter().map(|it| it as ContextRef))),
             _ => None
         }
     }

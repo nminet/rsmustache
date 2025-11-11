@@ -8,15 +8,11 @@ impl Context for YamlValue {
             |value| value as ContextRef
         )
     }
-    
-    fn children(&self) -> Option<Vec<ContextRef>> {
+
+    fn children(&self) -> Option<Box<dyn Iterator<Item = ContextRef> + '_>> {
         match self {
-            YamlValue::Sequence(seq) =>
-                Some(
-                    seq.iter()
-                        .map(|value| value as ContextRef)
-                        .collect::<_>()
-                ),
+            YamlValue::Sequence(seq) => 
+                Some(Box::new(seq.iter().map(|value| value as ContextRef))),
             _ => None
         }
     }
