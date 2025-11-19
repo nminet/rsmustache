@@ -1,5 +1,5 @@
 use std::{collections::HashMap, cell::RefCell, rc::Rc};
-use crate::context::{Context, ContextRef, ContextValue};
+use crate::{Context, ContextValue, ContextRef, ContextRefIterator};
 
 
 /// Minimun [Context] implementation.
@@ -134,7 +134,7 @@ impl MapsAndLists {
 }
 
 impl Context for MapsAndLists{
-    fn child(&self, name: &str, section: Option<(usize, usize)>) -> Option<ContextRef> {
+    fn child(&self, name: &str, section: Option<(usize, usize)>) -> Option<ContextRef<'_>> {
         match self {
             MapsAndLists(Value::Mapping(obj)) =>
                 obj.get(name).map(
@@ -147,7 +147,7 @@ impl Context for MapsAndLists{
         }
     }
 
-    fn children(&self) -> Option<Box<dyn Iterator<Item = ContextRef> + '_>> {
+    fn children(&self) -> Option<ContextRefIterator<'_>> {
         match self {
             MapsAndLists(Value::Sequence(seq)) =>
                 Some(Box::new(seq.iter().map(|it| it as ContextRef))),

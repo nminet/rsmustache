@@ -1,15 +1,15 @@
-use crate::{Context, ContextValue, ContextRef};
+use crate::{Context, ContextValue, ContextRef, ContextRefIterator};
 pub use serde_yaml::Value as YamlValue;
 
 
 impl Context for YamlValue {
-    fn child(&self, name: &str, _location: Option<(usize, usize)>) -> Option<ContextRef> {
+    fn child(&self, name: &str, _location: Option<(usize, usize)>) -> Option<ContextRef<'_>> {
         self.get(name).map(
             |value| value as ContextRef
         )
     }
 
-    fn children(&self) -> Option<Box<dyn Iterator<Item = ContextRef> + '_>> {
+    fn children(&self) -> Option<ContextRefIterator<'_>> {
         match self {
             YamlValue::Sequence(seq) => 
                 Some(Box::new(seq.iter().map(|value| value as ContextRef))),

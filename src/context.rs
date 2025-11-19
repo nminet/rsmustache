@@ -43,10 +43,10 @@ pub trait Context {
     /// is in section position. In this case it contains a (start,end) pair such that
     /// the [start..end] slice in the source that produced the template contains
     /// the text of the section.
-    fn child(&self, name: &str, section: Option<(usize, usize)>) -> Option<ContextRef>;
+    fn child(&self, name: &str, section: Option<(usize, usize)>) -> Option<ContextRef<'_>>;
 
     /// Get an iterator over a sequence of children contexts, or None if the context is not a sequence.
-    fn children(&self) -> Option<ContextRefIterator>;
+    fn children(&self) -> Option<ContextRefIterator<'_>>;
 
     /// Get the contents of the context.
     /// 
@@ -201,10 +201,7 @@ impl<'a> Stack<'a> {
     }
 
     pub(crate) fn is_falsy(&self) -> bool {
-        self.current().map_or(
-            true,
-             |context| context.is_falsy()
-        )
+        self.current().is_none_or(|context| context.is_falsy())
     }
 
     pub(crate) fn next(&mut self) -> bool {

@@ -116,7 +116,7 @@ pub(crate) enum Token<'a> {
 }
 
 impl<'a> Token<'a> {
-    fn text(text: &str, starts_new_line: bool) -> Token {
+    fn text(text: &'a str, starts_new_line: bool) -> Token<'a> {
         Token::Text(text, starts_new_line)
     }
     
@@ -172,7 +172,7 @@ fn qualified_tag<'a>(text: &'a str, qualifiers: &str) -> (&'a str, &'a str) {
     }
 }
 
-fn maybe_delimiters(text: &str) -> Result<(&str, &str), Token> {
+fn maybe_delimiters<'a>(text: &'a str) -> Result<(&'a str, &'a str), Token<'a>> {
     let words = text.split_ascii_whitespace().collect::<Vec<_>>();
     if text.contains("=") || words.len() != 2 {
         Err(Token::Error("invalid delimiters tag".to_owned()))
@@ -498,7 +498,7 @@ mod tests {
         loop {
             let token = reader.pop_front();
             assert_eq!(token, expected.next());
-            if token == None {
+            if token.is_none() {
                 break;
             }
         }

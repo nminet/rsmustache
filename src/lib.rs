@@ -74,7 +74,7 @@ mod yaml;
 mod maps_and_lists;
 
 pub use self::template::{Template, TemplateStore, TemplateMap};
-pub use self::context::{Context, ContextValue, ContextRef};
+pub use self::context::{Context, ContextValue, ContextRef, ContextRefIterator};
 pub use self::json::JsonValue;
 pub use self::yaml::YamlValue;
 pub use self::maps_and_lists::MapsAndLists;
