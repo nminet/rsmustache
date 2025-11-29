@@ -3,21 +3,11 @@
 /// The trait is used by the rendering engine to obtain context data and navigate
 /// in the implied tree as directed by the rendered template.
 /// 
-/// To avoid unnecessary memory copies and support dynamic generation of data,
-/// the trait assumes the implementation manages the lifecycle of the underlying
-/// data, providing a view on internal data structures. To support this, functions
-/// in the trait return context as
-/// ```text
-/// type ContextRef<'a> = &'a dyn Context
-/// ```
-///
-/// 
 /// The Mustache template system - for the purpose of rendering - assumes the context
 /// is one of
-/// - a named text value
-/// - a mapping of string to context
-/// - an iterator over a sequence of contexts
+/// - a string value
 /// - a boolean value
+/// - a mapping of string to context
 /// 
 /// Any context can be used as a section.
 /// ```text
@@ -30,6 +20,21 @@
 /// ```
 /// If **x** is a sequence, the content is rendered once for each item.
 /// 
+/// 
+/// To avoid unnecessary memory copies and support dynamic generation of data,
+/// the trait assumes the implementation manages the lifecycle of the underlying
+/// data, providing a view on internal data structures. To support this, functions
+/// in the trait return context as
+/// ```text
+/// type ContextRef<'a> = &'a dyn Context
+/// ```
+/// 
+/// Similarly, to avoid eager expansion, iterable section data is provided by the
+/// children method as
+/// ```text
+/// type ContextRefIterator<'a> = Box<dyn Iterator<Item = ContextRef<'a>> + 'a>
+/// ```
+///
 /// Mustache requires null and false to be falsy. Boolean conversion of
 /// other values are left for implementation to decide (the **is_falsy**
 /// entry in the trait allows controlling this).
@@ -51,7 +56,7 @@ pub trait Context {
     /// Get the contents of the context.
     /// 
     /// [ContextValue::Text] is rendered as text.
-    /// [ContextValue::Lambda] is compiled and rendered using the current stack
+    /// [ContextValue::Lambda] is a template rendered using the current stack
     /// and partials.
     fn value(&self) -> ContextValue;
 
