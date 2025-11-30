@@ -222,24 +222,21 @@ impl<'a> Stack<'a> {
 
     pub(crate) fn get(&mut self, name: &str) -> Option<ContextValue> {
         if name == "." {
-            Some(self.value())
+            self.value()
         } else {
             let len = self.len();
             if self.push(name, None) {
                 let result = self.value();
                 self.truncate(len);
-                Some(result)
+                result
             } else {
                 None
             }
         }
     }
 
-    pub fn value(&self) -> ContextValue {
-        match self.current() {
-            Some(context) => context.value(),
-            _ => ContextValue::Text("".to_owned())
-        }
+    pub fn value(&self) -> Option<ContextValue> {
+        self.current().map(|context| context.value())
     }
 }
 
@@ -274,9 +271,9 @@ mod test {
 
         stack.push("phones", None);
         assert!(stack.push("stuff", None));
-        assert_eq!(stack.value(), ct("item1"));
+        assert_eq!(stack.value(), sct("item1"));
         assert!(stack.next());
-        assert_eq!(stack.value(), ct("item2"));
+        assert_eq!(stack.value(), sct("item2"));
         assert!(!stack.next());
         assert_eq!(stack.get("extension"), sct("1234567"));
     }
@@ -287,7 +284,7 @@ mod test {
         let mut stack = Stack::new(&root);
 
         assert!(stack.push("obj.part2", None));
-        assert_eq!(stack.value(), ct("yyy"));
+        assert_eq!(stack.value(), sct("yyy"));
     }
 
     #[test]
@@ -297,7 +294,7 @@ mod test {
 
         stack.push("phones", None);
         assert!(stack.push("obj.part2", None));
-        assert_eq!(stack.value(), ct("yyy"));
+        assert_eq!(stack.value(), sct("yyy"));
     }
 
     #[test]
@@ -325,7 +322,7 @@ mod test {
 
         stack.push("name", None);
         assert!(!stack.push("obj.part1.part3", None));
-        assert_eq!(stack.value(), ct("John Doe"));
+        assert_eq!(stack.value(), sct("John Doe"));
     }
 
     #[test]

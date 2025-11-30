@@ -247,7 +247,7 @@ fn render_section(
             if must_render {
                 result.push_str(&render_segments(children, stack, indent, partials));
             }
-        } else if let ContextValue::Template(template) = stack.value() {
+        } else if let Some(ContextValue::Template(template)) = stack.value() {
             let delimiters = Some((od, cd));
             result.push_str(
                 &render_template(&template, delimiters, stack, indent, partials)
@@ -325,10 +325,10 @@ fn render_segments(
     segments: &Segments,
     stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
 ) -> String {
-    segments.iter()
-        .map(|segment| render_segment(segment, stack, indent, partials))
-        .collect::<Vec<_>>()
-        .concat()
+    segments.iter().fold(String::new(), |mut acc, segment| {
+        acc.push_str(&render_segment(segment, stack, indent, partials));
+        acc
+    })
 }
 
 
@@ -368,14 +368,29 @@ fn substitute_segment(segment: &Segment, parameters: &HashMap<String, Segments>)
 }
 
 fn html_escape(input: String) -> String {
-    input.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("\"", "&quot;")
-        .replace("'", "&#39;")
-        .replace("/", "&#47;")
-        .replace("=", "&#61;")
-        .replace("`", "&#96;")
+    let needs_escape = input.chars().any(|c| {
+        matches!(c, '&' | '<' | '>' | '"' | '\'' | '/' | '=' | '`')
+    });
+    
+    if !needs_escape {
+        input
+    } else {    
+        let mut escaped = String::with_capacity(input.len());
+        for c in input.chars() {
+            match c {
+                '&' => escaped.push_str("&amp;"),
+                '<' => escaped.push_str("&lt;"),
+                '>' => escaped.push_str("&gt;"),
+                '"' => escaped.push_str("&quot;"),
+                '\'' => escaped.push_str("&#39;"),
+                '/' => escaped.push_str("&#47;"),
+                '=' => escaped.push_str("&#61;"),
+                '`' => escaped.push_str("&#96;"),
+                _ => escaped.push(c),
+            }
+        }
+        escaped
+    }
 }
 
 
