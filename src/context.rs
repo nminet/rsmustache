@@ -47,7 +47,8 @@ pub trait Context {
     /// The section parameter is [Some] value if and only if the request for the name
     /// is in section position. In this case it contains a (start,end) pair such that
     /// the [start..end] slice in the source that produced the template contains
-    /// the text of the section.
+    /// the text of the section. This is mainly for use in [Context] implementing lambdas
+    /// that may use the content of the section being rendered.
     fn child(&self, name: &str, section: Option<(usize, usize)>) -> Option<ContextRef<'_>>;
 
     /// Get an iterator over a sequence of children contexts, or None if the context is not a sequence.
@@ -55,8 +56,8 @@ pub trait Context {
 
     /// Get the contents of the context.
     /// 
-    /// [ContextValue::Text] is rendered as text.
-    /// [ContextValue::Lambda] is a template rendered using the current stack
+    /// [ContextValue::Text] is rendered as is.
+    /// [ContextValue::Template] is a template rendered using the current stack
     /// and partials.
     fn value(&self) -> ContextValue;
 
@@ -67,7 +68,7 @@ pub trait Context {
 #[derive(PartialEq, Debug)]
 pub enum ContextValue {
     Text(String),
-    Lambda(String),
+    Template(String),
 }
 
 pub type ContextRef<'a> = &'a dyn Context;

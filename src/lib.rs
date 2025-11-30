@@ -7,13 +7,10 @@
 //! inheritance and dynamic-partials modules, passing relevant tests
 //! in [`specs`].
 //! 
-//! By design there is no mechanism to submit in-data callables.
-//! As the [Context] is a trait it is in principle possible to refer to
-//! pre-defined functions (possibly even use a section to feed a script engine)
-//! but this is NOT part of the crate and would have be be provided by an
-//! ad-hoc implementation. To support cases where the function needs it,
-//! the [Context] interface receives indices to locate the code of a section
-//! being rendered.
+//! The [Context] trait can support implementations that provide lambdas.
+//! In such implementation the value method of [Context] should return
+//! a [ContextValue::Template] carrying the template produced by the lambda.
+//! An example of such an implementation is provided in [MapsAndLists].
 //! 
 //! 
 //! # Samples

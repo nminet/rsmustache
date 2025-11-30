@@ -159,10 +159,10 @@ impl Context for MapsAndLists{
         match self {
             MapsAndLists(Value::Bool(b)) => ContextValue::Text(b.to_string()),
             MapsAndLists(Value::Text(text)) => ContextValue::Text(text.to_owned()),
-            MapsAndLists(Value::Lambda0(_, result)) => ContextValue::Lambda(
+            MapsAndLists(Value::Lambda0(_, result)) => ContextValue::Template(
                 result.borrow().clone()
             ),
-            MapsAndLists(Value::Lambda1(_, _, result)) => ContextValue::Lambda(
+            MapsAndLists(Value::Lambda1(_, _, result)) => ContextValue::Template(
                 result.borrow().clone()
             ),
             _ => ContextValue::Text("".to_owned())

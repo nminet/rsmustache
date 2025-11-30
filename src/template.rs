@@ -216,7 +216,7 @@ fn render_value(
         let mut value = indent.to_owned();
         let text = match stack.get(name) {
             Some(ContextValue::Text(text)) => text.to_owned(),
-            Some(ContextValue::Lambda(lambda)) => render_lambda(&lambda, None, stack, indent, partials),
+            Some(ContextValue::Template(template)) => render_template(&template, None, stack, indent, partials),
             _ => "".to_owned()
         };
         value.push_str(&text);
@@ -224,7 +224,7 @@ fn render_value(
     } else {
         match stack.get(name) {
             Some(ContextValue::Text(text)) => text.to_owned(),
-            Some(ContextValue::Lambda(lambda)) => render_lambda(&lambda, None, stack, indent, partials),
+            Some(ContextValue::Template(template)) => render_template(&template, None, stack, indent, partials),
             _ => "".to_owned()
         }
     };
@@ -247,10 +247,10 @@ fn render_section(
             if must_render {
                 result.push_str(&render_segments(children, stack, indent, partials));
             }
-        } else if let ContextValue::Lambda(lambda) = stack.value() {
+        } else if let ContextValue::Template(template) = stack.value() {
             let delimiters = Some((od, cd));
             result.push_str(
-                &render_lambda(&lambda, delimiters, stack, indent, partials)
+                &render_template(&template, delimiters, stack, indent, partials)
             );
         } else if stack.in_sequence() || !stack.is_falsy() {
             while stack.current().is_some() {
@@ -263,11 +263,11 @@ fn render_section(
     result
 }
 
-fn render_lambda(
-    lambda: &str, delimiters: Option<(&str, &str)>,
+fn render_template(
+    template: &str, delimiters: Option<(&str, &str)>,
     stack: &mut Stack, indent: &str, partials: Option<&dyn TemplateStore>
 ) -> String {
-    let mut reader = Reader::new(lambda);
+    let mut reader = Reader::new(template);
     if let Some((od, cd)) = delimiters {
         reader.set_delimiters(od, cd);
     };
