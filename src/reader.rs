@@ -173,11 +173,14 @@ fn qualified_tag<'a>(text: &'a str, qualifiers: &str) -> (&'a str, &'a str) {
 }
 
 fn maybe_delimiters<'a>(text: &'a str) -> Result<(&'a str, &'a str), Token<'a>> {
-    let words = text.split_ascii_whitespace().collect::<Vec<_>>();
-    if text.contains("=") || words.len() != 2 {
-        Err(Token::Error("invalid delimiters tag".to_owned()))
+    if text.contains('=') {
+        return Err(Token::Error("invalid delimiters tag".to_owned()));
+    }
+    let mut words = text.split_ascii_whitespace();
+    if let (Some(od), Some(cd), None) = (words.next(), words.next(), words.next()) {
+        Ok((od, cd))
     } else {
-        Ok((words[0], words[1]))
+        Err(Token::Error("invalid delimiters tag".to_owned()))
     }
 }
 
